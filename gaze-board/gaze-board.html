@@ -1,0 +1,2788 @@
+<title>Gaze Board</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=JetBrains+Mono:wght@400;500;600&display=swap">
+<style>
+  :root{
+    --bg:#F2F4F6;
+    --panel:#FFFFFF;
+    --panel-2:#E9EDF0;
+    --text:#182029;
+    --muted:#5B6773;
+    --border:#D7DEE3;
+    --accent:#256D82;
+    --accent-rgb:37,109,130;
+    --accent-strong:#184D5C;
+    --focus:#D98E2B;
+    --focus-rgb:217,142,43;
+    --success:#3F8F52;
+    --danger:#C1443B;
+    --danger-rgb:193,68,59;
+    --key-bg:#FFFFFF;
+    --key-border:#D7DEE3;
+    --key-shadow:rgba(24,32,41,0.10);
+    --dwell-ms:700ms;
+    --auto-space-ms:300ms;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#10151A; --panel:#1A222A; --panel-2:#212B34; --text:#E7EDF1; --muted:#93A2AC;
+      --border:#2C3944; --accent:#4FA9C4; --accent-rgb:79,169,196; --accent-strong:#7EC4DB;
+      --focus:#E7A93E; --focus-rgb:231,169,62; --success:#5CBB70; --danger:#E2695F; --danger-rgb:226,105,95;
+      --key-bg:#1E2731; --key-border:#324150; --key-shadow:rgba(0,0,0,0.35);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#10151A; --panel:#1A222A; --panel-2:#212B34; --text:#E7EDF1; --muted:#93A2AC;
+    --border:#2C3944; --accent:#4FA9C4; --accent-rgb:79,169,196; --accent-strong:#7EC4DB;
+    --focus:#E7A93E; --focus-rgb:231,169,62; --success:#5CBB70; --danger:#E2695F; --danger-rgb:226,105,95;
+    --key-bg:#1E2731; --key-border:#324150; --key-shadow:rgba(0,0,0,0.35);
+  }
+
+  *{ box-sizing:border-box; }
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font-family:"Atkinson Hyperlegible", "Segoe UI", Arial, sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .mono{ font-family:"JetBrains Mono", ui-monospace, Consolas, monospace; font-variant-numeric:tabular-nums; }
+  h1,h2,h3{ text-wrap:balance; margin:0; }
+  button{ font-family:inherit; }
+
+  .app{ display:flex; flex-direction:column; min-height:100vh; }
+  .body-row{ display:flex; flex:1; min-height:0; }
+  .main-col{ flex:1; min-width:0; display:flex; flex-direction:column; }
+
+  .suggestions{
+    flex:none; width:190px; padding:24px 16px; background:var(--panel); border-right:1px solid var(--border);
+    display:flex; flex-direction:column; gap:12px;
+  }
+  .suggestions h2{ font-size:0.82rem; color:var(--muted); text-transform:uppercase; letter-spacing:0.07em; font-weight:700; }
+  .suggestion-list{ display:flex; flex-direction:column; gap:8px; }
+  .suggestion-empty{ margin:0; color:var(--muted); font-size:0.85rem; font-style:italic; line-height:1.4; }
+  .suggestion-key{
+    position:relative; text-align:left; padding:12px 14px; border-radius:12px; overflow:hidden;
+    border:1px solid var(--key-border); background:var(--key-bg); color:var(--text);
+    font-size:1.05rem; font-weight:700; cursor:pointer; transition:transform .08s ease, box-shadow .15s ease;
+  }
+  .suggestion-key.hover{ transform:translateY(-1px); box-shadow:0 3px 8px var(--key-shadow); }
+  .suggestion-key .dwell-ring{ transform:none; }
+  .suggestion-key .key-label{ position:relative; z-index:1; }
+
+  .favorites{
+    flex:none; width:190px; padding:24px 16px; background:var(--panel); border-left:1px solid var(--border);
+    display:flex; flex-direction:column; gap:12px;
+  }
+  .favorites h2{ font-size:0.82rem; color:var(--muted); text-transform:uppercase; letter-spacing:0.07em; font-weight:700; }
+
+  /* Panel placement setting: swap which side suggestions vs favorites
+     sit on without touching the DOM, just flex order + which edge gets
+     the divider border. */
+  .body-row.swapped .suggestions{ order:3; border-right:none; border-left:1px solid var(--border); }
+  .body-row.swapped .main-col{ order:2; }
+  .body-row.swapped .favorites{ order:1; border-left:none; border-right:1px solid var(--border); }
+
+  .star-btn{
+    flex:none; width:50px; align-self:stretch; border-radius:12px; border:1px solid var(--key-border);
+    background:var(--key-bg); color:var(--muted); font-size:1.4rem; cursor:pointer; transition:transform .08s ease, color .15s ease;
+  }
+  .star-btn:hover{ transform:translateY(-1px); }
+  .star-btn.starred{ color:var(--focus); }
+  .star-btn:disabled{ opacity:0.4; cursor:default; }
+  .star-btn:disabled:hover{ transform:none; }
+
+  /* ---------- top bar ---------- */
+  .topbar{
+    display:flex; align-items:center; justify-content:space-between; gap:16px;
+    padding:14px 20px; background:var(--panel); border-bottom:1px solid var(--border);
+    flex-wrap:wrap;
+  }
+  .brand{ display:flex; align-items:center; gap:12px; }
+  .brand-mark{
+    width:46px; height:46px; border-radius:50%; display:flex; align-items:center; justify-content:center;
+    background:radial-gradient(circle at 35% 35%, var(--accent-strong), var(--accent));
+    color:#fff; font-size:22px; flex:none;
+  }
+  .brand h1{ font-size:1.5rem; font-weight:700; }
+  .brand p{ margin:3px 0 0; font-size:0.88rem; color:var(--muted); }
+
+  .topbar-controls{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .switch-control{ display:flex; align-items:center; gap:8px; font-size:0.82rem; color:var(--muted); }
+  .switch{ width:42px; height:24px; border-radius:999px; background:var(--border); position:relative; border:none; cursor:pointer; padding:0; transition:background .15s; flex:none; }
+  .switch[aria-checked="true"]{ background:var(--accent); }
+  .switch::after{ content:''; position:absolute; top:2px; left:2px; width:20px; height:20px; border-radius:50%; background:#fff; transition:transform .15s; box-shadow:0 1px 2px rgba(0,0,0,.25); }
+  .switch[aria-checked="true"]::after{ transform:translateX(18px); }
+
+  .ghost-btn, .icon-btn{
+    border:1px solid var(--border); background:var(--panel-2); color:var(--text);
+    border-radius:10px; padding:8px 12px; font-size:0.82rem; cursor:pointer; position:relative;
+  }
+  .ghost-btn:hover, .icon-btn:hover{ border-color:var(--accent); }
+  .icon-btn{ width:38px; height:38px; padding:0; font-size:1.05rem; }
+  .hint-dot{ position:absolute; top:-3px; right:-3px; width:9px; height:9px; border-radius:50%; background:var(--focus); box-shadow:0 0 0 2px var(--panel); }
+
+  .profile-widget{ display:flex; align-items:center; gap:8px; font-size:0.82rem; color:var(--muted); }
+
+  .auth-gate{ position:fixed; inset:0; background:var(--bg); z-index:50; display:flex; align-items:center; justify-content:center; padding:24px; }
+  .auth-gate[hidden]{ display:none; }
+  .auth-card{ width:100%; max-width:360px; text-align:center; }
+  .auth-card .brand-mark{
+    width:46px; height:46px; border-radius:50%; display:flex; align-items:center; justify-content:center; margin:0 auto 14px;
+    background:radial-gradient(circle at 35% 35%, var(--accent-strong), var(--accent)); color:#fff; font-size:22px;
+  }
+  .auth-card h1{ font-size:1.5rem; margin-bottom:20px; }
+  .auth-tabs{ display:flex; gap:4px; margin-bottom:18px; background:var(--panel-2); border-radius:10px; padding:4px; }
+  .auth-tab{ flex:1; padding:9px; border:none; background:none; border-radius:8px; color:var(--muted); font-size:0.85rem; font-weight:700; cursor:pointer; }
+  .auth-tab.active{ background:var(--panel); color:var(--text); box-shadow:0 1px 3px var(--key-shadow); }
+  .auth-form{ display:flex; flex-direction:column; gap:12px; text-align:left; }
+  .auth-form[hidden]{ display:none; }
+  .auth-form label{ display:flex; flex-direction:column; gap:4px; font-size:0.82rem; color:var(--muted); }
+  .auth-form input{
+    padding:10px 12px; border-radius:8px; border:1px solid var(--border); background:var(--panel);
+    color:var(--text); font-size:0.95rem; font-family:inherit;
+  }
+  .auth-error{ color:var(--danger); font-size:0.82rem; margin-top:12px; }
+  .auth-error[hidden]{ display:none; }
+  .auth-note{ color:var(--muted); font-size:0.72rem; margin-top:18px; line-height:1.45; }
+  .platform-auth-btn{ width:100%; margin-top:4px; }
+  .auth-platform-note{ color:var(--muted); font-size:0.72rem; margin-top:8px; line-height:1.4; }
+  .auth-divider{ display:flex; align-items:center; gap:10px; margin:18px 0 14px; color:var(--muted); font-size:0.72rem; }
+  .auth-divider::before, .auth-divider::after{ content:''; flex:1; height:1px; background:var(--border); }
+
+  .tutorial-overlay{
+    position:fixed; inset:0; background:rgba(0,0,0,.35); z-index:45; display:flex;
+    align-items:center; justify-content:center; padding:24px;
+  }
+  .tutorial-overlay[hidden]{ display:none; }
+  .tutorial-card{
+    position:relative; width:100%; max-width:560px; max-height:min(680px,86vh); overflow-y:auto;
+    background:var(--panel); border-radius:16px; padding:28px 28px 24px; box-shadow:0 20px 50px rgba(0,0,0,.25);
+  }
+  .tutorial-card h2{ font-size:1.3rem; margin-bottom:8px; padding-right:28px; }
+  .tutorial-intro{ color:var(--muted); font-size:0.9rem; line-height:1.5; margin-bottom:20px; }
+  .tutorial-section{ padding:14px 0; border-top:1px solid var(--border); }
+  .tutorial-section:first-of-type{ border-top:none; padding-top:0; }
+  .tutorial-section h3{ font-size:0.95rem; margin-bottom:6px; }
+  .tutorial-section p{ color:var(--muted); font-size:0.86rem; line-height:1.55; margin:0; }
+  .tutorial-section p b{ color:var(--text); }
+  .tutorial-done{ width:100%; margin-top:20px; }
+
+  /* ---------- output strip ---------- */
+  .output-strip{ padding:18px 24px; background:var(--panel); border-bottom:1px solid var(--border); }
+  .output-row{ display:flex; align-items:stretch; gap:10px; }
+  .output-text{
+    flex:1; min-width:0; min-height:1.5em; font-size:2rem; line-height:1.4; padding:16px 20px; border-radius:12px;
+    background:var(--panel-2); border:1px solid var(--border); letter-spacing:0.02em; text-transform:uppercase;
+  }
+  .output-text .placeholder{ color:var(--muted); font-style:italic; font-size:1.2rem; text-transform:none; }
+  .cursor-blink{ display:inline-block; margin-left:2px; animation:blink 1s step-start infinite; color:var(--accent); }
+  @media (prefers-reduced-motion:reduce){ .cursor-blink{ animation:none; opacity:.6; } }
+  .ghost-text{ color:var(--muted); opacity:0.55; cursor:pointer; border-radius:4px; padding:0 2px; }
+  .ghost-text.hover{ background:rgba(var(--accent-rgb),0.14); opacity:0.9; }
+  @keyframes blink{ 50%{ opacity:0; } }
+  .output-meta{ display:flex; gap:18px; margin-top:10px; font-size:0.88rem; color:var(--muted); flex-wrap:wrap; align-items:center; }
+  .badge{ padding:2px 8px; border-radius:999px; background:rgba(var(--accent-rgb),0.14); color:var(--accent-strong); font-weight:600; }
+  @media (prefers-color-scheme:dark){ :root:not([data-theme="light"]) .badge{ color:var(--accent); } }
+  :root[data-theme="dark"] .badge{ color:var(--accent); }
+
+  /* ---------- board ---------- */
+  .board-wrap{ flex:1; display:flex; flex-direction:column; align-items:center; gap:14px; padding:22px 16px 32px; overflow-x:auto; }
+  .legend{ display:flex; align-items:center; gap:12px; font-size:0.92rem; color:var(--muted); }
+  .legend-grad{ width:84px; height:12px; border-radius:6px; background:linear-gradient(90deg, rgba(var(--focus-rgb),0.08), rgba(var(--focus-rgb),0.85)); border:1px solid var(--border); }
+
+  .keyboard{
+    display:grid; grid-template-columns:repeat(6, 164px); grid-template-rows:repeat(5, 142px);
+    gap:6px; place-items:center; padding:10px;
+  }
+  .key{
+    position:relative; display:flex; align-items:center; justify-content:center;
+    border-radius:14px; background:var(--key-bg); border:1px solid var(--key-border); color:var(--text);
+    cursor:pointer; user-select:none; box-shadow:0 1px 3px var(--key-shadow);
+    transition:transform .08s ease, box-shadow .15s ease;
+  }
+  .key.hover{ transform:translateY(-2px); box-shadow:0 4px 10px var(--key-shadow); }
+  .key .key-label{ position:relative; z-index:1; font-weight:700; }
+  .dwell-ring{ position:absolute; inset:0; width:100%; height:100%; transform:rotate(-90deg); pointer-events:none; }
+  .ring-bg{ fill:none; stroke:var(--key-border); stroke-width:3; }
+  .ring-fg{ fill:none; stroke:var(--accent); stroke-width:3; stroke-dasharray:100.5; stroke-dashoffset:100.5; transition:none; }
+  .dwelling .ring-fg{ stroke-dashoffset:0; transition:stroke-dashoffset linear var(--dwell-ms); }
+  .auto-spacing .ring-fg{ stroke-dashoffset:0; stroke:var(--focus); transition:stroke-dashoffset linear var(--auto-space-ms); }
+  @keyframes keyPulse{ 0%{ box-shadow:0 0 0 0 rgba(var(--accent-rgb),.55);} 100%{ box-shadow:0 0 0 16px rgba(var(--accent-rgb),0);} }
+  .key.selected{ animation:keyPulse 380ms ease-out; }
+  @media (prefers-reduced-motion:reduce){ .ring-fg{ transition-duration:1ms !important; } .key.selected{ animation:none; } }
+
+  .dock{ display:flex; gap:8px; width:100%; max-width:1030px; }
+  .dock-key{
+    flex:1; padding:26px 16px; border-radius:16px; border:1px solid var(--key-border); background:var(--panel-2);
+    color:var(--text); font-size:1.15rem; font-weight:700; cursor:pointer; position:relative; overflow:hidden;
+  }
+  .dock-key.hover{ box-shadow:0 3px 8px var(--key-shadow); }
+  .dock-key .dwell-ring{ transform:none; }
+  .dock-key .ring-bg{ stroke:var(--muted); opacity:.5; }
+  .dock-key .ring-fg{ stroke-width:2; }
+  .dock-space{ flex:2.4; }
+  .dock-keyset{ flex:0.55; padding:26px 8px; font-size:0.85rem; }
+
+  /* ---------- settings panel ---------- */
+  .scrim{ position:fixed; inset:0; background:rgba(0,0,0,.35); opacity:0; pointer-events:none; transition:opacity .15s; z-index:20; }
+  .scrim.open{ opacity:1; pointer-events:auto; }
+  .settings-panel{
+    position:fixed; top:0; right:0; height:100%; width:min(372px,90vw); background:var(--panel);
+    border-left:1px solid var(--border); box-shadow:-8px 0 24px rgba(0,0,0,.18);
+    transform:translateX(100%); transition:transform .2s ease; z-index:21; padding:20px; overflow-y:auto;
+  }
+  .settings-panel.open{ transform:translateX(0); }
+  .settings-panel h2{ font-size:1.05rem; margin-bottom:14px; }
+  .settings-tabs{
+    display:flex; flex-wrap:wrap; gap:4px; margin-bottom:20px; background:var(--panel-2); border-radius:10px; padding:4px;
+  }
+  .settings-tab{
+    flex:1 1 70px; padding:9px 4px; border:none; background:none; border-radius:8px; color:var(--muted);
+    font-size:0.74rem; font-weight:700; cursor:pointer; white-space:nowrap;
+  }
+  .settings-tab.active{ background:var(--panel); color:var(--text); box-shadow:0 1px 3px var(--key-shadow); }
+  .settings-panel-body[hidden]{ display:none; }
+  .setting-row{ margin-bottom:18px; }
+  .color-swatches{ display:flex; flex-wrap:wrap; gap:10px; }
+  .swatch{
+    width:30px; height:30px; border-radius:50%; border:2px solid transparent; background:var(--sw);
+    cursor:pointer; padding:0; box-shadow:0 1px 3px var(--key-shadow);
+  }
+  .swatch.active{ border-color:var(--text); }
+  .setting-row label{ display:flex; justify-content:space-between; align-items:center; font-size:0.85rem; margin-bottom:6px; }
+  .setting-row .row-value{ color:var(--muted); }
+  .setting-row input[type="range"]{ width:100%; accent-color:var(--accent); }
+  .radio-group{ display:flex; flex-direction:column; gap:6px; }
+  .radio-group label{ display:flex; align-items:center; gap:8px; font-size:0.85rem; justify-content:flex-start; }
+  .setting-hint{ font-size:0.72rem; color:var(--muted); margin-top:4px; }
+  .real-tracker-status{ font-size:0.8rem; font-weight:600; padding:8px 10px; border-radius:8px; margin:6px 0; background:var(--panel-2); border:1px solid var(--border); color:var(--muted); }
+  .real-tracker-status[hidden]{ display:none; }
+  .real-tracker-status.loading{ color:var(--focus); }
+  .real-tracker-status.active{ color:#16A34A; border-color:#16A34A; }
+  .real-tracker-status.error{ color:#DC2626; border-color:#DC2626; }
+  /* WebGazer injects its own video/canvas overlay elements straight
+     into <body> with its own inline styles - pinned here to a small
+     corner box instead of wherever it defaults to, so it sits neatly
+     alongside the keyboard rather than covering it. !important because
+     WebGazer re-applies its own inline styles on some updates. */
+  #webgazerVideoContainer{ position:fixed !important; top:auto !important; left:16px !important; right:auto !important; bottom:16px !important; width:170px !important; height:128px !important; border-radius:12px; overflow:hidden; z-index:15; box-shadow:0 6px 20px rgba(0,0,0,.35); }
+  #webgazerVideoFeed, #webgazerFaceOverlay, #webgazerFaceFeedbackBox{ width:170px !important; height:128px !important; }
+  .settings-close{ position:absolute; top:16px; right:16px; background:none; border:none; font-size:1.1rem; color:var(--muted); cursor:pointer; }
+  .panel-btn{ position:relative; width:100%; padding:10px; border-radius:10px; border:1px solid var(--border); background:var(--panel-2); color:var(--text); font-size:0.85rem; cursor:pointer; margin-bottom:8px; }
+  .panel-btn:hover{ border-color:var(--accent); }
+
+  .stats-heading{ font-size:0.78rem; font-weight:700; text-transform:uppercase; letter-spacing:0.07em; color:var(--muted); margin:22px 0 10px; }
+  .stats-heading:first-of-type{ margin-top:0; }
+  .stats-grid{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .stat-item{ background:var(--panel-2); border:1px solid var(--border); border-radius:10px; padding:10px 12px; }
+  .stat-item .stat-value{ font-family:"JetBrains Mono",monospace; font-size:1.05rem; font-weight:600; color:var(--text); font-variant-numeric:tabular-nums; display:block; }
+  .stat-item .stat-label{ font-size:0.72rem; color:var(--muted); margin-top:3px; display:block; }
+  .stats-charts{ display:flex; flex-direction:column; gap:12px; }
+  .stat-chart-card{ background:var(--panel-2); border:1px solid var(--border); border-radius:10px; padding:12px 14px; }
+  .stat-chart-title{ display:flex; align-items:baseline; justify-content:space-between; font-size:0.78rem; font-weight:600; color:var(--text); margin-bottom:8px; }
+  .stat-chart-current{ font-family:"JetBrains Mono",monospace; font-size:0.82rem; font-weight:600; color:var(--accent); font-variant-numeric:tabular-nums; }
+  .stat-chart{ display:block; width:100%; height:56px; overflow:visible; }
+  .stat-chart .chart-area{ fill:rgba(var(--accent-rgb),0.16); stroke:none; }
+  .stat-chart .chart-line{ fill:none; stroke:var(--accent); stroke-width:2; stroke-linejoin:round; stroke-linecap:round; }
+  .stat-chart .chart-dot{ fill:var(--accent); }
+  .stat-chart-empty{ font-size:0.76rem; color:var(--muted); padding:10px 0; }
+
+  /* ---------- calibration ---------- */
+  .calibration[hidden]{ display:none; }
+  .calibration{ position:fixed; inset:0; background:var(--bg); z-index:30; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:24px; }
+  .calibration.banner-only{ background:transparent; pointer-events:none; justify-content:flex-start; }
+  .calib-card{ max-width:440px; }
+  .calib-card h2{ font-size:1.3rem; margin-bottom:10px; }
+  .calib-card p{ color:var(--muted); font-size:0.9rem; line-height:1.5; }
+  .calib-card ol{ text-align:left; color:var(--muted); font-size:0.85rem; line-height:1.7; }
+  .primary-btn{ margin-top:16px; padding:12px 22px; border-radius:10px; border:none; background:var(--accent); color:#fff; font-weight:700; font-size:0.9rem; cursor:pointer; }
+  .primary-btn:hover{ background:var(--accent-strong); }
+  .text-btn{ margin-top:10px; background:none; border:none; color:var(--muted); text-decoration:underline; cursor:pointer; font-size:0.8rem; }
+
+  .calib-target{
+    position:absolute; width:64px; height:64px; border-radius:50%;
+    background:radial-gradient(circle, var(--focus), rgba(var(--focus-rgb),0));
+    border:2px solid var(--focus); display:flex; align-items:center; justify-content:center;
+    transform:translate(-50%,-50%);
+  }
+  .calib-target .dwell-ring{ transform:none; }
+  .calib-target .ring-bg{ stroke:rgba(255,255,255,0.45); }
+  .calib-target .ring-fg{ stroke:#fff; stroke-width:4; }
+  .calib-target.dwelling .ring-fg{ transition-duration:800ms; }
+  @keyframes targetPulse{ 0%,100%{ box-shadow:0 0 0 0 rgba(var(--focus-rgb),.5);} 50%{ box-shadow:0 0 0 12px rgba(var(--focus-rgb),0);} }
+  .calib-target{ animation:targetPulse 1.6s ease-in-out infinite; }
+  @media (prefers-reduced-motion:reduce){ .calib-target{ animation:none; } }
+  .calib-progress{ position:absolute; bottom:26px; font-size:0.8rem; color:var(--muted); }
+
+  .calib-banner{
+    pointer-events:auto; margin-top:14px; padding:10px 18px; background:var(--panel); border:1px solid var(--border);
+    border-radius:12px; box-shadow:0 4px 14px rgba(0,0,0,.15); font-size:0.9rem; display:flex; gap:14px; align-items:center;
+  }
+  .calib-banner b{ font-family:"JetBrains Mono", monospace; letter-spacing:0.08em; }
+
+  .calib-summary{ text-align:left; font-size:0.85rem; color:var(--muted); background:var(--panel-2); border:1px solid var(--border); border-radius:10px; padding:12px 16px; margin-top:12px; }
+  .calib-summary div{ display:flex; justify-content:space-between; padding:3px 0; }
+  .calib-summary b{ color:var(--text); font-family:"JetBrains Mono", monospace; }
+
+  .gaze-dot{
+    position:fixed; width:16px; height:16px; border-radius:50%; background:rgba(var(--focus-rgb),.85);
+    box-shadow:0 0 0 5px rgba(var(--focus-rgb),.22); pointer-events:none; transform:translate(-50%,-50%); z-index:40;
+    top:-40px; left:-40px;
+  }
+
+  /* Dev tool: a fuzzy, size/color/position-jittering ellipse standing in
+     for a real webcam or Pi-camera gaze estimate, in place of the tidy
+     dot above - see startDevGazeSim() for what drives its size/color/offset. */
+  .gaze-blob{
+    position:fixed; border-radius:50%; pointer-events:none; z-index:41; transform:translate(-50%,-50%);
+    filter:blur(3px); top:-200px; left:-200px;
+  }
+
+  /* ---------- high contrast ----------
+     Only touches border/muted-text visibility (via inline custom
+     properties set in applyContrastMode) - text/background/accent stay
+     whatever theme and accent color are already chosen, this just makes
+     edges and secondary text easier to make out. */
+  .high-contrast .key,
+  .high-contrast .dock-key,
+  .high-contrast .suggestion-key,
+  .high-contrast .output-text,
+  .high-contrast .swatch{ border-width:2px; }
+  .high-contrast .key.hover{ border-color:var(--text); }
+
+</style>
+
+<div class="app">
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">&#9673;</span>
+      <div class="brand-text">
+        <h1>Gaze Board</h1>
+        <p>mouse-simulated eye-gaze AAC keyboard &mdash; testing mode</p>
+      </div>
+      <button id="tutorialBtn" class="icon-btn" aria-label="Help and tutorial">&#63;</button>
+    </div>
+    <div class="topbar-controls">
+      <span class="switch-control">
+        Typing mode
+        <button id="typingModeBtn" class="switch" role="switch" aria-checked="true" aria-label="Toggle typing mode"></button>
+      </span>
+      <span class="switch-control" title="When on, hovering just looks around — clicking a key (a stand-in for a blink) selects it instantly.">
+        Blink to select
+        <button id="blinkModeBtn" class="switch" role="switch" aria-checked="false" aria-label="Toggle blink-to-select mode"></button>
+      </span>
+      <div class="profile-widget" id="profileWidget">
+        <span id="profileNameLabel">&#128100;</span>
+        <button class="ghost-btn" id="signOutBtn">Sign out</button>
+      </div>
+      <button id="settingsBtn" class="icon-btn" aria-label="Settings">&#9881;</button>
+    </div>
+  </header>
+
+  <div class="tutorial-overlay" id="tutorialOverlay" hidden>
+    <div class="tutorial-card">
+      <button class="settings-close" id="tutorialClose" aria-label="Close tutorial">&#10005;</button>
+      <h2>How Gaze Board works</h2>
+      <p class="tutorial-intro">A quick tour of every feature. The mouse stands in for eye-gaze throughout - hovering is "looking," clicking is a stand-in for a deliberate blink.</p>
+
+      <div class="tutorial-section">
+        <h3>Looking vs. selecting</h3>
+        <p><b>Typing mode</b> (top bar): hover a key long enough and its ring fills in, then it's typed - that hold time is the dwell time. <b>Blink to select</b> swaps this out entirely: hovering never selects anything by itself, only a click does, so you can look freely with zero risk of typing something by accident. The two are mutually exclusive - turning one on turns the other off.</p>
+      </div>
+
+      <div class="tutorial-section">
+        <h3>The keyboard</h3>
+        <p>Common letters sit centered and larger, rare ones near the edges and smaller, based on real English letter frequency (switch to the alphabetical layout in Settings to compare). Gold highlighting on a key means the prediction algorithm thinks it's likely to come next - more solid, more confident.</p>
+      </div>
+
+      <div class="tutorial-section">
+        <h3>Getting words out faster</h3>
+        <p><b>Suggested words</b> (left panel by default) complete the word you're typing. <b>Favorites</b> (right panel) hold whole phrases you've starred for one-click reuse - tap the star next to the output box to save whatever you've typed. Greyed-out <b>ghost text</b> right after your cursor previews the rest of your word or the likely next word - click it to accept. All three - suggestions, favorites, ghost text - always require a click, regardless of typing/blink mode, since gaze rests on them constantly while you compose.</p>
+      </div>
+
+      <div class="tutorial-section">
+        <h3>The dock</h3>
+        <p><b>space</b>, <b>back</b>, <b>clear</b> and <b>speak</b> sit below the keyboard - speak reads your sentence aloud with the browser's built-in voice. Auto-spacebar (in Settings) can press space for you once a word can't extend into a longer one.</p>
+      </div>
+
+      <div class="tutorial-section">
+        <h3>Calibration</h3>
+        <p>Run it from the top bar or Settings. It times how quickly you reach five spread-out targets, then has you spell three short words, and uses both to set a starting dwell time tuned to your pace. From there, the adaptive dwell AI keeps nudging it based on your ongoing backspace rate and typing speed.</p>
+      </div>
+
+      <div class="tutorial-section">
+        <h3>Settings</h3>
+        <p>Tabbed by purpose: <b>Appearance</b> (color scheme, accent color, contrast, colorblind-friendly confidence color, panel placement, keyboard size), <b>Input</b> (layout, dwell timing, auto-spacebar), <b>Predict</b> (next-letter highlighting), <b>Session</b> (calibration and reset controls), and <b>Stats</b> (session and all-time typing metrics for your profile).</p>
+      </div>
+
+      <div class="tutorial-section">
+        <h3>Accounts</h3>
+        <p>Everything - settings, calibration, favorites, and dwell-timing history - is saved per signed-in profile, in this browser only. There's no list of other people's names to browse; you sign in or create an account by typing the exact username.</p>
+      </div>
+
+      <button class="primary-btn tutorial-done" id="tutorialDone">Got it</button>
+    </div>
+  </div>
+
+  <div class="auth-gate" id="authGate">
+    <div class="auth-card">
+      <span class="brand-mark" aria-hidden="true">&#9673;</span>
+      <h1>Gaze Board</h1>
+      <button type="button" class="primary-btn platform-auth-btn" id="platformSignInBtn" hidden>Continue with your Claude account</button>
+      <p class="auth-platform-note" id="platformSignInNote" hidden>Syncs your favorites, settings, and stats to your Claude account — no password needed, and it follows you to any other browser or device you're signed into it on.</p>
+      <div class="auth-divider" id="authDivider" hidden><span>or use a local profile</span></div>
+      <div class="auth-tabs">
+        <button class="auth-tab active" id="tabSignIn" type="button">Sign in</button>
+        <button class="auth-tab" id="tabCreate" type="button">Create account</button>
+      </div>
+      <form id="signInForm" class="auth-form">
+        <label>Username <input type="text" id="signInUsername" autocomplete="username" maxlength="24"></label>
+        <label>Password <input type="password" id="signInPassword" autocomplete="current-password"></label>
+        <button type="submit" class="primary-btn">Sign in</button>
+      </form>
+      <form id="createForm" class="auth-form" hidden>
+        <label>Username <input type="text" id="createUsername" autocomplete="username" maxlength="24"></label>
+        <label>Password <input type="password" id="createPassword" autocomplete="new-password"></label>
+        <label>Confirm password <input type="password" id="createConfirm" autocomplete="new-password"></label>
+        <button type="submit" class="primary-btn">Create account</button>
+      </form>
+      <p class="auth-error" id="authError" hidden></p>
+      <p class="auth-note">Synced to any device where you open this page signed in to Claude, and always saved in this browser too as a backup — no one can browse or pick someone else's name from a list, you have to know it. That said, this is a privacy screen against casual snooping, not real account security: don't reuse a password you use anywhere real.</p>
+    </div>
+  </div>
+
+  <div class="body-row">
+    <aside class="suggestions" id="suggestions">
+      <h2 title="Suggestions always require a click (a stand-in for a blink) to select — gaze can rest here freely without picking one.">Suggested words</h2>
+      <div class="suggestion-list" id="suggestionList">
+        <p class="suggestion-empty">Start a word to see suggestions.</p>
+      </div>
+    </aside>
+
+    <div class="main-col">
+      <section class="output-strip">
+        <div class="output-row">
+          <div class="output-text" id="outputText"><span class="placeholder">Hover a key below to start &mdash; the mouse stands in for your eyes.</span></div>
+          <button class="star-btn" id="starBtn" title="Favorite this phrase — always requires a click, same as suggestions" disabled>&#9734;</button>
+        </div>
+        <div class="output-meta">
+          <span class="mono"><span id="wpmReadout">0.0</span> WPM</span>
+          <span class="mono">dwell <span id="dwellReadout">700</span> ms</span>
+          <span class="mono">backspace rate <span id="bkspReadout">0</span>%</span>
+          <span class="badge" id="adaptiveBadge">adaptive: on</span>
+        </div>
+      </section>
+
+      <main class="board-wrap">
+        <div class="legend">
+          <span class="legend-grad" aria-hidden="true"></span>
+          predicted next letter &mdash; more solid means the algorithm is more confident
+        </div>
+        <div class="keyboard" id="keyboard"></div>
+        <div class="dock">
+          <button class="dock-key dock-keyset" data-action="keyset" title="Switch to numbers, symbols &amp; emoji">123</button>
+          <button class="dock-key dock-space" data-action="space">space</button>
+          <button class="dock-key" data-action="backspace">&#9003; back</button>
+          <button class="dock-key" data-action="clear">clear</button>
+          <button class="dock-key dock-speak" data-action="speak">&#128266; speak</button>
+        </div>
+      </main>
+    </div>
+
+    <aside class="favorites" id="favorites">
+      <h2 title="Favorites always require a click (a stand-in for a blink) to select — gaze can rest here freely without picking one.">Favorites</h2>
+      <div class="suggestion-list" id="favoriteList">
+        <p class="suggestion-empty">No favorites yet — tap the star to save a phrase.</p>
+      </div>
+    </aside>
+  </div>
+
+  <div class="scrim" id="scrim"></div>
+  <aside class="settings-panel" id="settingsPanel" aria-hidden="true">
+    <button class="settings-close" id="settingsClose" aria-label="Close settings">&#10005;</button>
+    <h2>Settings</h2>
+
+    <div class="settings-tabs" role="tablist">
+      <button class="settings-tab active" data-tab="appearance" type="button" role="tab" aria-selected="true">&#127912; Appearance</button>
+      <button class="settings-tab" data-tab="input" type="button" role="tab" aria-selected="false">&#9000; Input</button>
+      <button class="settings-tab" data-tab="predictions" type="button" role="tab" aria-selected="false">&#10024; Predict</button>
+      <button class="settings-tab" data-tab="session" type="button" role="tab" aria-selected="false">&#128190; Session</button>
+      <button class="settings-tab" data-tab="dev" type="button" role="tab" aria-selected="false" hidden>&#128295; Dev</button>
+      <button class="settings-tab" data-tab="stats" type="button" role="tab" aria-selected="false">&#128202; Stats</button>
+    </div>
+
+    <div class="settings-panel-body" data-tab="appearance" role="tabpanel">
+      <div class="setting-row">
+        <label>Color scheme</label>
+        <div class="radio-group">
+          <label><input type="radio" name="colorScheme" value="system" checked> Match system</label>
+          <label><input type="radio" name="colorScheme" value="light"> Light</label>
+          <label><input type="radio" name="colorScheme" value="dark"> Dark</label>
+        </div>
+      </div>
+
+      <div class="setting-row">
+        <label>Accent color</label>
+        <div class="color-swatches" id="colorSwatches">
+          <button class="swatch" data-color="teal" style="--sw:#256D82" title="Teal (default)"></button>
+          <button class="swatch" data-color="blue" style="--sw:#2563EB" title="Blue"></button>
+          <button class="swatch" data-color="indigo" style="--sw:#4F46E5" title="Indigo"></button>
+          <button class="swatch" data-color="purple" style="--sw:#7C3AED" title="Purple"></button>
+          <button class="swatch" data-color="pink" style="--sw:#DB2777" title="Pink"></button>
+          <button class="swatch" data-color="coral" style="--sw:#DC2626" title="Coral"></button>
+          <button class="swatch" data-color="orange" style="--sw:#D97706" title="Orange"></button>
+          <button class="swatch" data-color="green" style="--sw:#16A34A" title="Green"></button>
+        </div>
+      </div>
+
+      <div class="setting-row">
+        <label>Theme</label>
+        <div class="radio-group">
+          <label><input type="radio" name="contrastMode" value="standard" checked> Standard contrast</label>
+          <label><input type="radio" name="contrastMode" value="high"> High contrast (bolder borders &amp; text)</label>
+        </div>
+      </div>
+
+      <div class="setting-row">
+        <label>Confidence color <span class="row-value">(highlight, gaze dot, calibration)</span></label>
+        <div class="radio-group">
+          <label><input type="radio" name="confidenceColor" value="amber" checked> Amber (default)</label>
+          <label><input type="radio" name="confidenceColor" value="blue"> Blue (colorblind-friendly alternative)</label>
+        </div>
+        <div class="setting-hint">Amber is already colorblind-safe on its own - confidence shows as opacity on one hue, not a red/green choice between two. Blue is offered as an alternative some people simply see better.</div>
+      </div>
+
+      <div class="setting-row">
+        <label>Panel placement</label>
+        <div class="radio-group">
+          <label><input type="radio" name="panelPlacement" value="normal" checked> Suggestions left, favorites right</label>
+          <label><input type="radio" name="panelPlacement" value="swapped"> Suggestions right, favorites left</label>
+        </div>
+      </div>
+
+      <div class="setting-row">
+        <label>Keyboard size <span class="row-value" id="keyScaleValue">100%</span></label>
+        <input type="range" id="keyScaleSlider" min="80" max="200" step="5" value="100">
+        <div class="setting-hint">Scales the whole board - keys and the space between them together - so nothing overlaps as it grows.</div>
+      </div>
+
+      <div class="setting-row">
+        <label>Show gaze dot <span class="row-value" id="gazeDotValue">on</span></label>
+        <button class="switch" id="gazeDotSwitch" role="switch" aria-checked="true" aria-label="Toggle gaze dot"></button>
+      </div>
+    </div>
+
+    <div class="settings-panel-body" data-tab="input" role="tabpanel" hidden>
+      <div class="setting-row">
+        <label>Layout</label>
+        <div class="radio-group">
+          <label><input type="radio" name="layout" value="optimized" checked> Frequency-optimized (common letters centered &amp; larger)</label>
+          <label><input type="radio" name="layout" value="alphabetical"> Alphabetical grid (uniform size, for comparison)</label>
+        </div>
+      </div>
+
+      <div class="setting-row">
+        <label>Adaptive dwell AI <span class="row-value" id="adaptiveValue">on</span></label>
+        <button class="switch" id="adaptiveSwitch" role="switch" aria-checked="true" aria-label="Toggle adaptive dwell timing"></button>
+        <div class="setting-hint">Recalculates dwell time every 10 seconds from your recent backspace rate and typing speed.</div>
+      </div>
+
+      <div class="setting-row">
+        <label>Dwell time <span class="row-value"><span id="dwellValue">700</span> ms</span></label>
+        <input type="range" id="dwellSlider" min="300" max="1500" step="25" value="700">
+        <div class="setting-hint" id="dwellHint">Drag to set an exact delay — this switches the adaptive AI off.</div>
+      </div>
+
+      <div class="setting-row">
+        <label>Auto-spacebar <span class="row-value" id="autoSpacebarValue">off</span></label>
+        <button class="switch" id="autoSpacebarSwitch" role="switch" aria-checked="false" aria-label="Toggle auto-spacebar"></button>
+        <div class="setting-hint">When the word you're typing is complete and can't extend into a longer word, auto-presses space after a short delay — watch the ring fill on the space key.</div>
+      </div>
+
+      <div class="setting-row">
+        <label>Auto-spacebar delay <span class="row-value"><span id="autoSpacebarDelayValue">300</span> ms</span></label>
+        <input type="range" id="autoSpacebarDelaySlider" min="100" max="1500" step="50" value="300">
+      </div>
+    </div>
+
+    <div class="settings-panel-body" data-tab="predictions" role="tabpanel" hidden>
+      <div class="setting-row">
+        <label>Next-letter highlighting <span class="row-value" id="predictionValue">on</span></label>
+        <button class="switch" id="predictionSwitch" role="switch" aria-checked="true" aria-label="Toggle prediction highlighting"></button>
+      </div>
+
+      <div class="setting-row">
+        <label>Highlight strength <span class="row-value" id="strengthValue">100%</span></label>
+        <input type="range" id="strengthSlider" min="20" max="150" step="10" value="100">
+      </div>
+    </div>
+
+    <div class="settings-panel-body" data-tab="session" role="tabpanel" hidden>
+      <button class="panel-btn" id="recalibrateBtn">Run calibration<span class="hint-dot" id="calibHint" hidden></span></button>
+      <button class="panel-btn" id="resetTextBtn">Clear typed text</button>
+      <button class="panel-btn" id="resetStatsBtn">Reset adaptive stats</button>
+    </div>
+
+    <div class="settings-panel-body" data-tab="dev" role="tabpanel" hidden>
+      <div class="setting-row">
+        <label>Gaze indicator</label>
+        <div class="radio-group">
+          <label><input type="radio" name="gazeIndicator" value="default" checked> Default dot</label>
+          <label><input type="radio" name="gazeIndicator" value="simulate"> Simulated webcam</label>
+          <label><input type="radio" name="gazeIndicator" value="real"> Real webcam (experimental)</label>
+        </div>
+        <div class="setting-hint">Simulated webcam replaces the small dot with a fuzzy, wandering blob approximating what a plain camera (no IR illumination or corneal-reflection tracking) actually outputs, instead of the mouse's perfect coordinates - and it isn't just cosmetic: the blob's own jittered position, not the real cursor, is what the keyboard actually hit-tests for dwell selection, so a wrong guess here is a wrong letter there. Within the blob, color runs darkest and most solid at the center (the actual estimate) and fades toward its edge (the surrounding uncertainty) - like a real confidence heatmap. Its hue shifts blue as recent movement speed increases (lower confidence mid-saccade) and orange as the mouse settles into a steadier fixation. Shape isn't fixed either: it's a little taller than wide even at rest (video-based trackers measure vertical gaze less precisely than horizontal - smaller range of motion, harder to detect), and stretches further along whatever direction it's currently moving, more so the faster it moves (webcam frame rate and processing lag mean the reported position blurs and trails behind the real one during fast eye movement) - with a softly morphing outline so it reads as a blob settling rather than a shape shaking in place. Real webcam replaces all of that with an actual eye tracker: <a href="https://webgazer.cs.brown.edu/" target="_blank" rel="noopener">WebGazer.js</a> (Brown University, open source since 2016) reads your real webcam through your browser and predicts where you're looking, using the exact same blob and key-selection pipeline described above - it's genuinely driving the keyboard, not a demo. Video never leaves this device; everything runs locally in your browser. It needs camera permission and a moment to load its face-tracking model, gets more accurate the more you use it, and its accuracy depends entirely on your real webcam, lighting and camera angle, not the slider below.</div>
+      </div>
+      <div class="setting-row" id="webcamQualityRow" hidden>
+        <label>Webcam quality <span class="row-value" id="webcamQualityValue">Typical laptop webcam</span></label>
+        <input type="range" id="webcamQualitySlider" min="0" max="100" step="5" value="50">
+        <div class="setting-hint">Both ends are pulled from published webcam-eye-tracking studies, not guesses: the low end (~340px error) reflects sparse-calibration/poor-condition results reported for WebGazer.js-style tracking; the high end (~100px, roughly 2&deg; of visual angle) reflects the best documented accuracy for calibrated, well-lit webcam-only tracking in the same body of research. For comparison, a dedicated low-cost <em>IR</em> tracker like the Gazepoint GP3 HD measures around 1&deg; (roughly 35-40px) - meaningfully tighter than the best a plain webcam gets, because it's fundamentally different hardware, not just a nicer camera.</div>
+      </div>
+      <div class="setting-row" id="realTrackerRow" hidden>
+        <label>Real webcam tracker</label>
+        <p class="real-tracker-status" id="realTrackerStatus" hidden></p>
+        <div class="setting-hint">The small video box in the corner is WebGazer's own view of your face - it's how you can tell it's genuinely tracking you rather than faking it. If the camera prompt never appears, or nothing ever tracks, this page is probably embedded in a viewer that blocks camera access - try opening it in its own browser tab.</div>
+      </div>
+    </div>
+
+    <div class="settings-panel-body" data-tab="stats" role="tabpanel" hidden>
+      <h3 class="stats-heading">This session</h3>
+      <div class="stats-grid" id="sessionStatsGrid"></div>
+      <h3 class="stats-heading">All time</h3>
+      <div class="stats-grid" id="allTimeStatsGrid"></div>
+      <h3 class="stats-heading">Progress over time</h3>
+      <div class="stats-charts" id="statsCharts"></div>
+    </div>
+  </aside>
+
+  <div class="calibration" id="calibration" hidden></div>
+  <div class="gaze-dot" id="gazeDot" hidden></div>
+  <div class="gaze-blob" id="gazeBlob" hidden></div>
+</div>
+
+<script src="dictionary.js"></script>
+<script>
+(function(){
+  "use strict";
+
+  /* ============================================================
+     PREDICTION HOOK — plug your real algorithm in here.
+     activePredictor(currentWord, fullText) must return an array of
+     { letter, confidence } where confidence is 0 (unlikely) to 1 (certain).
+     currentWord = letters typed since the last space/punctuation.
+     Swap it at runtime with: AAC.setPredictor(yourFunction)
+
+     The default predictor below ports your Python script: for every word
+     in a word list that starts with currentWord, add a frequency weight
+     to whatever letter comes right after the prefix, then return the top
+     6 letters by total weight — same shape as your dictionary + zipf_frequency
+     loop. FULL_DICTIONARY (loaded from dictionary.js, generated once from
+     english_words' ~235k-word "web2" set + real wordfreq scores) is already
+     sorted most-common-word-first, so approxZipf() reconstructs an
+     approximate frequency straight from each word's position in that order
+     — no server or live Python needed at runtime.
+     ============================================================ */
+  function approxZipf(rank){ return Math.max(0.8, 7.6 - Math.log2(rank + 2) * 0.85); }
+  function defaultPredictor(currentWord, fullText){
+    var prefix = currentWord.toLowerCase();
+    var prefixLen = prefix.length;
+    var weights = {};
+    for(var i=0; i<FULL_DICTIONARY.length; i++){
+      var word = FULL_DICTIONARY[i];
+      if(word.length > prefixLen && word.slice(0, prefixLen) === prefix){
+        var nextLetter = word[prefixLen];
+        var weight = approxZipf(i);
+        weights[nextLetter] = (weights[nextLetter] || 0) + weight;
+      }
+    }
+    var entries = Object.keys(weights).map(function(letter){ return [letter, weights[letter]]; });
+    entries.sort(function(a,b){ return b[1]-a[1]; });
+    entries = entries.slice(0,6);
+    if(!entries.length) return [];
+    var maxWeight = entries[0][1];
+    return entries.map(function(e){ return { letter:e[0].toUpperCase(), confidence: Math.min(1, e[1]/maxWeight) }; });
+  }
+  var activePredictor = defaultPredictor;
+  window.AAC = { setPredictor: function(fn){ activePredictor = fn; } };
+  function predictNextLetters(currentWord, fullText){ return activePredictor(currentWord, fullText); }
+
+  /* ============================================================
+     Layout generation — 26 letters + 4 punctuation marks placed on
+     a 6x5 grid. Frequency-optimized layout sorts grid cells by
+     distance from center and hands the most frequent characters
+     the most central cells, scaling key size with that same distance.
+     ============================================================ */
+  var COLS = 6, ROWS = 5;
+  var LETTER_FREQ = [
+    ['E',12.70],['T',9.06],['A',8.17],['O',7.51],['I',6.97],['N',6.75],['S',6.33],['H',6.09],['R',5.99],
+    ['D',4.25],['L',4.03],['C',2.78],['U',2.76],['M',2.41],['W',2.36],['F',2.23],['G',2.02],['Y',1.97],
+    ['P',1.93],['B',1.29],['V',0.98],['K',0.77],['J',0.15],['X',0.15],['Q',0.10],['Z',0.07]
+  ];
+  var PUNCT_FREQ = [['.',0.06],[',',0.05],['?',0.04],['!',0.03]];
+  var ALL_ITEMS = LETTER_FREQ.concat(PUNCT_FREQ);
+
+  function buildCells(){
+    var cells = [];
+    var centerR = (ROWS-1)/2, centerC = (COLS-1)/2;
+    for(var r=0;r<ROWS;r++){
+      for(var c=0;c<COLS;c++){
+        var dist = Math.hypot(r-centerR, c-centerC);
+        cells.push({r:r, c:c, dist:dist});
+      }
+    }
+    return cells;
+  }
+  function lerp(a,b,t){ return a + (b-a)*t; }
+
+  function makeOptimizedLayout(){
+    var cells = buildCells().sort(function(a,b){ return a.dist - b.dist; });
+    var maxDist = cells[cells.length-1].dist;
+    var items = ALL_ITEMS.slice().sort(function(a,b){ return b[1]-a[1]; });
+    return cells.map(function(cell,i){
+      var t = maxDist ? cell.dist/maxDist : 0;
+      return { r:cell.r, c:cell.c, ch:items[i][0], scale: lerp(1.22, 0.85, t) };
+    });
+  }
+  function makeAlphabeticalLayout(){
+    var items = ALL_ITEMS.slice().sort(function(a,b){
+      var aLetter = /[A-Z]/i.test(a[0]), bLetter = /[A-Z]/i.test(b[0]);
+      if(aLetter !== bLetter) return aLetter ? -1 : 1;
+      return a[0] < b[0] ? -1 : 1;
+    });
+    var cells = buildCells();
+    return cells.map(function(cell,i){
+      return { r:cell.r, c:cell.c, ch:items[i][0], scale:1 };
+    });
+  }
+  var LAYOUTS;
+
+  /* ============================================================
+     Secondary keyset — numbers, extra punctuation, and a few emoji,
+     toggled in with the small "123" dock button (same idea as a
+     phone keyboard's number/symbol switch key). Filled in reading
+     order, not frequency-sorted, since there's no real usage-frequency
+     data for this mixed a set of characters the way there is for letters.
+     ============================================================ */
+  var SECONDARY_ITEMS = [
+    '0','1','2','3','4','5','6','7','8','9',
+    ';',':',"'",'"','-','(',')','/','@','#','&','*','+','=','%',
+    '😊','👍','❤️','😢','👋'
+  ];
+  function makeSequentialLayout(items){
+    var cells = buildCells();
+    return cells.map(function(cell,i){
+      return { r:cell.r, c:cell.c, ch:items[i], scale:1 };
+    });
+  }
+  var SECONDARY_LAYOUT;
+  var activeKeyset = 'primary';
+
+  /* Above 115% keyboard size, reshape from 6 columns x 5 rows to 10 columns
+     x 3 rows - cells move off the bottom and out to the sides instead of
+     stacking taller, spreading the board wider and shorter as it grows. */
+  function updateGridShape(){
+    if(settings.keyScale > 1.15){ COLS = 10; ROWS = 3; }
+    else { COLS = 6; ROWS = 5; }
+  }
+  function rebuildLayouts(){
+    LAYOUTS = { optimized: makeOptimizedLayout(), alphabetical: makeAlphabeticalLayout() };
+    SECONDARY_LAYOUT = makeSequentialLayout(SECONDARY_ITEMS);
+  }
+
+  /* ============================================================
+     State
+     ============================================================ */
+  var DEFAULT_SETTINGS = {
+    layout:'optimized', adaptive:true, dwellTime:700, manualDwell:700,
+    predictionOn:true, highlightStrength:1.0, keyScale:1.0, showGazeDot:true, typingMode:true, blinkMode:false,
+    autoSpacebarEnabled:false, autoSpacebarDelay:300,
+    accentColor:'teal', panelPlacement:'normal', contrastMode:'standard', confidenceColor:'amber',
+    colorScheme:'system', gazeIndicator:'default', webcamQuality:50
+  };
+
+  // Open to every signed-in profile now - kept as its own function
+  // (rather than inlining `!!currentProfile` at each call site) since
+  // it's still the one gate for the Dev tab, the simulated-webcam gaze
+  // indicator, and the AYDDYKHMMTI party easter egg.
+  function isDevUser(){
+    return !!currentProfile;
+  }
+  /* Hides the whole Dev tab (button + panel) until someone's signed
+     in, and falls back to the Appearance tab if a profile switch
+     yanks the tab out from under whoever's looking at it. Re-run on
+     every sign-in via syncSettingsUI(). */
+  function applyDevAccess(){
+    var allowed = isDevUser();
+    var devTabBtn = document.querySelector('.settings-tab[data-tab="dev"]');
+    var devPanel = document.querySelector('.settings-panel-body[data-tab="dev"]');
+    if(devTabBtn) devTabBtn.hidden = !allowed;
+    if(!allowed && devPanel && !devPanel.hidden){
+      var firstTab = document.querySelector('.settings-tab');
+      if(firstTab) firstTab.click();
+    }
+  }
+
+  /* ============================================================
+     Appearance — accent color, panel placement, cleaner graphics.
+     Each accent preset carries a light-theme and a dark-theme variant
+     of the same three tokens the base stylesheet already uses
+     (--accent/--accent-strong/--accent-rgb), applied as inline custom
+     properties on the root element - those always win over the
+     stylesheet's own light/dark rules, which is exactly what lets one
+     chosen color follow the user across both themes.
+     ============================================================ */
+  var ACCENT_PRESETS = {
+    teal:   { light:['#256D82','#184D5C','37,109,130'],  dark:['#4FA9C4','#7EC4DB','79,169,196'] },
+    blue:   { light:['#2563EB','#1D4ED8','37,99,235'],   dark:['#60A5FA','#93C5FD','96,165,250'] },
+    indigo: { light:['#4F46E5','#4338CA','79,70,229'],   dark:['#818CF8','#A5B4FC','129,140,248'] },
+    purple: { light:['#7C3AED','#6D28D9','124,58,237'],  dark:['#A78BFA','#C4B5FD','167,139,250'] },
+    pink:   { light:['#DB2777','#BE185D','219,39,119'],  dark:['#F472B6','#F9A8D4','244,114,182'] },
+    coral:  { light:['#DC2626','#B91C1C','220,38,38'],   dark:['#F87171','#FCA5A5','248,113,113'] },
+    orange: { light:['#D97706','#B45309','217,119,6'],   dark:['#FBBF24','#FDE68A','251,191,36'] },
+    green:  { light:['#16A34A','#15803D','22,163,74'],   dark:['#4ADE80','#86EFAC','74,222,128'] }
+  };
+  /* An explicit in-app light/dark choice, independent of whatever the
+     surrounding page/browser chrome is set to. 'system' clears the
+     override entirely so prefers-color-scheme decides, matching how
+     every color in this stylesheet was already built to behave. */
+  function applyColorScheme(){
+    var mode = settings.colorScheme || 'system';
+    if(mode === 'system') document.documentElement.removeAttribute('data-theme');
+    else document.documentElement.setAttribute('data-theme', mode);
+  }
+  function isDarkTheme(){
+    var explicit = document.documentElement.getAttribute('data-theme');
+    if(explicit === 'dark') return true;
+    if(explicit === 'light') return false;
+    return !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  }
+  function applyAccentPreset(){
+    var preset = ACCENT_PRESETS[settings.accentColor] || ACCENT_PRESETS.teal;
+    var vals = isDarkTheme() ? preset.dark : preset.light;
+    var root = document.documentElement.style;
+    root.setProperty('--accent', vals[0]);
+    root.setProperty('--accent-strong', vals[1]);
+    root.setProperty('--accent-rgb', vals[2]);
+  }
+  /* High contrast bumps up border/muted-text visibility via the same
+     inline-custom-property technique as the accent color, so it always
+     wins over the stylesheet regardless of light/dark. Confidence color
+     re-themes --focus/--focus-rgb - the single hue this whole app uses
+     to mean "confidence/attention" (letter highlight, gaze dot, the
+     calibration target, the dev gaze blob below) - offering blue as an
+     alternative to the default amber for anyone who finds it easier to
+     see. Note: the amber default is already colorblind-safe on its own
+     merits, since confidence is shown by *opacity* on one hue, not by
+     picking between two hues the way a red/green pair would be. */
+  var CONTRAST_PRESETS = {
+    light:{ muted:'#33383D', border:'#8A9399', keyBorder:'#5C6670' },
+    dark: { muted:'#C7CDD3', border:'#5B6673', keyBorder:'#7C8792' }
+  };
+  function applyContrastMode(){
+    var root = document.documentElement.style;
+    document.documentElement.classList.toggle('high-contrast', settings.contrastMode === 'high');
+    if(settings.contrastMode !== 'high'){
+      root.removeProperty('--muted'); root.removeProperty('--border'); root.removeProperty('--key-border');
+      return;
+    }
+    var vals = isDarkTheme() ? CONTRAST_PRESETS.dark : CONTRAST_PRESETS.light;
+    root.setProperty('--muted', vals.muted);
+    root.setProperty('--border', vals.border);
+    root.setProperty('--key-border', vals.keyBorder);
+  }
+  var CONFIDENCE_PRESETS = {
+    amber: { light:['#D98E2B','217,142,43'], dark:['#E7A93E','231,169,62'] },
+    blue:  { light:['#2563EB','37,99,235'],  dark:['#60A5FA','96,165,250'] }
+  };
+  function applyConfidenceColor(){
+    var preset = CONFIDENCE_PRESETS[settings.confidenceColor] || CONFIDENCE_PRESETS.amber;
+    var vals = isDarkTheme() ? preset.dark : preset.light;
+    var root = document.documentElement.style;
+    root.setProperty('--focus', vals[0]);
+    root.setProperty('--focus-rgb', vals[1]);
+  }
+  if(window.matchMedia){
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function(){
+      applyAccentPreset(); applyContrastMode(); applyConfidenceColor();
+    });
+  }
+  function applyPanelPlacement(){
+    document.querySelector('.body-row').classList.toggle('swapped', settings.panelPlacement === 'swapped');
+  }
+  /* ============================================================
+     Profiles — the "backend" for this page is the browser's own
+     localStorage, namespaced per person. Each profile is one JSON
+     blob (settings + calibration + favorites + adaptive-timing
+     history) under gazeBoardProfile:<name>; gazeBoardProfileList
+     is just the registry of names for the corner switcher; whichever
+     name was active gets remembered in gazeBoardCurrentProfile so
+     reloading the page keeps you signed in as the same person.
+     Anything saved before this feature existed (under the old flat
+     gazeBoardSettings/Calibration/Favorites keys) is migrated into
+     "Guest" the first time this runs, so nothing gets lost.
+     ============================================================ */
+  function profileKey(name){ return 'gazeBoardProfile:' + name; }
+  function listProfiles(){
+    try{
+      var raw = localStorage.getItem('gazeBoardProfileList');
+      var list = raw ? JSON.parse(raw) : [];
+      if(list.indexOf('Guest') === -1) list.unshift('Guest');
+      return list;
+    }catch(e){ return ['Guest']; }
+  }
+  function saveProfileList(list){
+    try{ localStorage.setItem('gazeBoardProfileList', JSON.stringify(list)); }catch(e){}
+  }
+  function loadProfileData(name){
+    try{
+      var raw = localStorage.getItem(profileKey(name));
+      if(raw) return JSON.parse(raw);
+    }catch(e){}
+    var blank = { settings: Object.assign({}, DEFAULT_SETTINGS), calibration: null, favorites: [], adaptiveHistory: [] };
+    if(name !== 'Guest') return blank;
+    try{
+      var legacySettings = JSON.parse(localStorage.getItem('gazeBoardSettings'));
+      if(legacySettings) blank.settings = Object.assign({}, DEFAULT_SETTINGS, legacySettings);
+    }catch(e){}
+    try{
+      var legacyCalib = JSON.parse(localStorage.getItem('gazeBoardCalibration'));
+      if(legacyCalib) blank.calibration = legacyCalib;
+    }catch(e){}
+    try{
+      var legacyFavorites = JSON.parse(localStorage.getItem('gazeBoardFavorites'));
+      if(legacyFavorites) blank.favorites = legacyFavorites;
+    }catch(e){}
+    return blank;
+  }
+  function saveProfileData(name, data){
+    try{ localStorage.setItem(profileKey(name), JSON.stringify(data)); }catch(e){}
+  }
+
+  /* ============================================================
+     Cloud-backed sign-in — an ADDITIVE layer on top of the localStorage
+     username/password accounts above, not a replacement. localStorage
+     is per-browser, which is exactly why an account "goes missing" in
+     a different browser or a different Google profile window. When
+     this page is opened as a Claude artifact, claude.use("db") gives
+     this page a shared document store that survives reloads and
+     follows a signed-in Claude viewer to any device. Two ways in end
+     up here:
+       1. "Continue with your Claude account" - no typed password, the
+          viewer's own Claude identity (claude.use("user")) is the
+          credential, data lives PRIVATELY at data/users/<their id>/profile,
+          nobody else can read it.
+       2. A typed username + password, same as always - now ALSO
+          mirrored to a SHARED document at accounts/<sha256 of the
+          username>, so that exact username+password works from any
+          device that opens this page while signed in to Claude, no
+          Claude-account linking required. Shared means exactly that:
+          the account is only as private as "you have to know the
+          exact username", same trust model the plain localStorage
+          version already had (see the auth note in the HTML) - just
+          no longer scoped to one browser. Passwords are still only
+          ever stored hashed.
+     Never write a viewer's name anywhere persistent (db or
+     localStorage) - it only ever lives in the currentProfile in-memory
+     variable for display, same as a typed local username already did.
+     ============================================================ */
+  var claudeUserNS = null, claudeDbNS = null, claudePlatformId = null;
+  var usingPlatformAuth = false;   // true: this session's data lives ONLY at data/users/<id>/profile
+  var activeCloudDocRef = null;    // set for a local-credential session once its shared doc is known
+  var dbSaveChain = Promise.resolve();
+  var platformIdentityReady = null;
+  async function initPlatformIdentity(){
+    try{
+      if(!window.claude || !window.claude.use) return;
+      var u = await window.claude.use('user');
+      var d = await window.claude.use('db');
+      claudeUserNS = u; claudeDbNS = d;
+      if(u && d) claudePlatformId = await u.id();
+    }catch(e){}
+    updatePlatformSignInUI();
+  }
+  function updatePlatformSignInUI(){
+    var available = !!(claudePlatformId && claudeDbNS);
+    if(el.platformSignInBtn) el.platformSignInBtn.hidden = !available;
+    if(el.platformSignInNote) el.platformSignInNote.hidden = !available;
+    if(el.authDivider) el.authDivider.hidden = !available;
+  }
+  async function hashUsername(username){
+    var data = new TextEncoder().encode('acct:' + username.trim().toLowerCase());
+    var hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    return Array.from(new Uint8Array(hashBuffer)).map(function(b){ return b.toString(16).padStart(2,'0'); }).join('');
+  }
+  // db hands back FROZEN document bodies (same object every time it
+  // hasn't changed) - the platform's own contract says to clone before
+  // editing. profileData gets written to constantly (every favorite,
+  // setting, calibration, stat), so any doc pulled from the cloud has
+  // to be cloned into a normal mutable object before it's ever used as
+  // profileData, or the first write throws "read-only".
+  function cloneDocData(snap){
+    if(!snap || !snap.exists) return null;
+    var d = snap.data();
+    if(!d) return null;
+    try{ return JSON.parse(JSON.stringify(d)); }catch(e){ return null; }
+  }
+  // The shared doc a local username+password account mirrors to, or
+  // null when db isn't reachable here - every call site already treats
+  // null as "fall back to this browser's own copy", so signing in
+  // still works offline or outside claude.ai, just without the sync.
+  async function sharedAccountRef(username){
+    if(platformIdentityReady) await platformIdentityReady;
+    if(!claudeDbNS) return null;
+    try{
+      var id = await hashUsername(username);
+      return claudeDbNS.doc('accounts/' + id);
+    }catch(e){ return null; }
+  }
+  // Appended to auth errors that might really mean "this window can't
+  // reach the shared account store" rather than "this account doesn't
+  // exist" - claudeDbNS null means the db capability never resolved at
+  // all here (not opened as a live claude.ai page, or offline);
+  // claudePlatformId null on top of a working claudeDbNS usually means
+  // this window isn't signed in to a Claude account, which the shared
+  // accounts/ store also needs to read or write anything.
+  function cloudSyncHint(){
+    if(!claudeDbNS) return ' (This window can\'t reach the shared account store, so it only sees accounts saved on THIS device.)';
+    if(!claudePlatformId) return ' (Make sure you\'re signed in to a Claude account in this browser window — accounts only sync across devices while you are.)';
+    return '';
+  }
+  function queueCloudDocSave(ref, data){
+    if(!ref) return;
+    var snapshot = JSON.parse(JSON.stringify(data));
+    dbSaveChain = dbSaveChain.then(function(){
+      return ref.set(snapshot);
+    }).catch(function(e){ console.warn('Gaze Board: cloud save failed', e); });
+  }
+  // Every place that used to call saveProfileData(currentProfile, profileData)
+  // directly now goes through here, so a cloud-backed session's saves route
+  // to db instead of (or, for local-credential accounts, alongside)
+  // localStorage without duplicating that branch everywhere.
+  function persistProfileData(){
+    if(!currentProfile) return;
+    // Wrapped defensively: this runs synchronously inside things like
+    // toggleFavorite(), and a throw here (a capability namespace not
+    // actually being ready, a bad path) must never stop the caller from
+    // reaching its own UI update afterward - a save hiccup should be
+    // invisible, not break the feature that triggered it.
+    try{
+      if(usingPlatformAuth){
+        if(claudeDbNS) queueCloudDocSave(claudeDbNS.doc('data/users/' + claudePlatformId + '/profile'), profileData);
+        return;
+      }
+      saveProfileData(currentProfile, profileData);
+      if(activeCloudDocRef) queueCloudDocSave(activeCloudDocRef, profileData);
+    }catch(e){
+      console.warn('Gaze Board: persistProfileData failed', e);
+    }
+  }
+  // No profile is loaded until sign-in succeeds - the keyboard renders
+  // once with blank defaults below, but the auth gate sits on top of it
+  // (z-index 50, opaque) and blocks every click until then.
+  var currentProfile = null;
+  var profileData = { settings: Object.assign({}, DEFAULT_SETTINGS), calibration: null, favorites: [], adaptiveHistory: [] };
+
+  var settings = Object.assign({}, DEFAULT_SETTINGS, profileData.settings);
+  var buffer = '';
+  var keyLog = [];
+  var sessionStart = performance.now();
+  var calib = null;
+  var favorites = [];
+  // Running totals for the Stats tab, tracked as buffer deltas (see
+  // trackStatsDelta in afterEdit) so every path that adds text - typed
+  // keys, accepted suggestions/favorites/ghost text - counts the same
+  // way, and backspace-driven shrinkage never counts as progress.
+  var sessionCharsTyped = 0, sessionWordsCompleted = 0, lastBufferLenForStats = 0, lastSpaceCountForStats = 0;
+
+  function saveSettings(){
+    if(!currentProfile) return;
+    profileData.settings = settings;
+    persistProfileData();
+  }
+  function hasCalibration(){
+    return !!profileData.calibration;
+  }
+  function saveFavorites(){
+    if(!currentProfile) return;
+    profileData.favorites = favorites;
+    persistProfileData();
+  }
+
+  function defaultStats(){
+    return { createdAt: new Date().toISOString(), totalSessions:0, totalCharsTyped:0, totalWordsTyped:0, totalActiveMs:0, bestWpm:0 };
+  }
+  function formatDuration(ms){
+    var totalMin = Math.floor(ms/60000);
+    var h = Math.floor(totalMin/60), m = totalMin%60;
+    if(h > 0) return h+'h '+m+'m';
+    if(m > 0) return m+'m';
+    return Math.max(0, Math.floor(ms/1000))+'s';
+  }
+  function statItem(value, label){
+    return '<div class="stat-item"><span class="stat-value">'+value+'</span><span class="stat-label">'+label+'</span></div>';
+  }
+  /* Small hand-rolled SVG sparklines for the Stats tab - no charting
+     library pulled in for three thin trend lines. Plots each value as
+     a fraction of that chart's own min-max range (not a shared axis
+     across charts), since WPM, dwell-ms and backspace-rate live on
+     totally different scales and each just needs to show its own
+     trend, not be compared numerically to the others. */
+  function buildSparklineSVG(values){
+    var w = 280, h = 56, pad = 4;
+    var min = Math.min.apply(null, values), max = Math.max.apply(null, values);
+    if(min === max){ min -= 1; max += 1; }
+    var stepX = values.length > 1 ? (w - pad*2) / (values.length - 1) : 0;
+    var pts = values.map(function(v, i){
+      var x = pad + i*stepX;
+      var y = h - pad - ((v - min)/(max - min)) * (h - pad*2);
+      return [x, y];
+    });
+    var lineD = 'M' + pts.map(function(p){ return p[0].toFixed(1)+','+p[1].toFixed(1); }).join(' L');
+    var last = pts[pts.length - 1], first = pts[0];
+    var areaD = lineD + ' L' + last[0].toFixed(1) + ',' + (h-pad) + ' L' + first[0].toFixed(1) + ',' + (h-pad) + ' Z';
+    return '<svg class="stat-chart" viewBox="0 0 '+w+' '+h+'" preserveAspectRatio="none" aria-hidden="true">' +
+      '<path class="chart-area" d="'+areaD+'"></path>' +
+      '<path class="chart-line" d="'+lineD+'"></path>' +
+      '<circle class="chart-dot" cx="'+last[0].toFixed(1)+'" cy="'+last[1].toFixed(1)+'" r="2.6"></circle>' +
+      '</svg>';
+  }
+  function statChartCard(title, values, formatCurrent){
+    if(values.length < 2){
+      return '<div class="stat-chart-card"><div class="stat-chart-title">'+title+'</div>' +
+        '<div class="stat-chart-empty">Not enough sessions yet — finish a couple more to see a trend.</div></div>';
+    }
+    var current = formatCurrent(values[values.length - 1]);
+    return '<div class="stat-chart-card"><div class="stat-chart-title">'+title+'<span class="stat-chart-current">'+current+'</span></div>' +
+      buildSparklineSVG(values) + '</div>';
+  }
+  function renderStatsCharts(history){
+    if(!el.statsCharts) return;
+    var recent = history.slice(-20);
+    el.statsCharts.innerHTML =
+      statChartCard('Typing speed (WPM)', recent.map(function(h){ return h.wpm||0; }), function(v){ return v.toFixed(1)+' wpm'; }) +
+      statChartCard('Dwell time — the adaptive AI at work', recent.map(function(h){ return h.finalDwellMs||0; }), function(v){ return Math.round(v)+' ms'; }) +
+      statChartCard('Backspace rate', recent.map(function(h){ return (h.backspaceRate||0)*100; }), function(v){ return v.toFixed(0)+'%'; });
+  }
+  /* All-time numbers blend the persisted totals with the still-in-
+     progress current session (added on top, not yet saved into
+     profileData.stats - that only happens at sign-out/reset in
+     recordSessionMetrics), so "all time" never looks like it's ignoring
+     what you just typed. */
+  function renderStats(){
+    if(!currentProfile || !el.sessionStatsGrid) return;
+    var sessionMs = performance.now() - sessionStart;
+    var sessionWpm = Number(el.wpm.textContent) || 0;
+    el.sessionStatsGrid.innerHTML =
+      statItem(formatDuration(sessionMs), 'Time this session') +
+      statItem(sessionCharsTyped, 'Characters typed') +
+      statItem(sessionWordsCompleted, 'Words completed') +
+      statItem(sessionWpm.toFixed(1), 'Current WPM') +
+      statItem((el.bksp.textContent || '0')+'%', 'Backspace rate') +
+      statItem(settings.dwellTime+' ms', 'Dwell time');
+
+    var stats = profileData.stats || defaultStats();
+    var history = profileData.adaptiveHistory || [];
+    var avgWpm = history.length ? (history.reduce(function(s,h){ return s+(h.wpm||0); }, 0)/history.length) : 0;
+    var created = stats.createdAt ? new Date(stats.createdAt).toLocaleDateString() : '—';
+    el.allTimeStatsGrid.innerHTML =
+      statItem(created, 'Account created') +
+      statItem((stats.totalSessions||0) + 1, 'Total sessions') +
+      statItem(formatDuration((stats.totalActiveMs||0) + sessionMs), 'Total time spent') +
+      statItem((stats.totalCharsTyped||0) + sessionCharsTyped, 'Characters typed all-time') +
+      statItem((stats.totalWordsTyped||0) + sessionWordsCompleted, 'Words completed all-time') +
+      statItem(Math.max(stats.bestWpm||0, sessionWpm).toFixed(1), 'Best WPM recorded') +
+      statItem(avgWpm.toFixed(1), 'Average WPM (past sessions)') +
+      statItem(favorites.length, 'Favorites saved') +
+      statItem(hasCalibration() ? 'Yes' : 'Not yet', 'Calibrated');
+    renderStatsCharts(history);
+  }
+  function recordSessionMetrics(){
+    if(keyLog.length < 3) return; // nothing meaningful typed this session
+    var recent = keyLog.slice(-20);
+    var backspaces = recent.filter(function(k){ return k.type === 'backspace'; }).length;
+    var wpmNow = Number(el.wpm.textContent) || 0;
+    profileData.adaptiveHistory = profileData.adaptiveHistory || [];
+    profileData.adaptiveHistory.push({
+      endedAt: new Date().toISOString(),
+      finalDwellMs: settings.dwellTime,
+      wpm: wpmNow,
+      backspaceRate: recent.length ? Math.round((backspaces/recent.length)*1000)/1000 : 0,
+      charsTyped: buffer.length
+    });
+    profileData.adaptiveHistory = profileData.adaptiveHistory.slice(-50);
+
+    profileData.stats = profileData.stats || defaultStats();
+    profileData.stats.totalSessions += 1;
+    profileData.stats.totalCharsTyped += sessionCharsTyped;
+    profileData.stats.totalWordsTyped += sessionWordsCompleted;
+    profileData.stats.totalActiveMs += (performance.now() - sessionStart);
+    profileData.stats.bestWpm = Math.max(profileData.stats.bestWpm || 0, wpmNow);
+  }
+
+  /* ============================================================
+     Sign in / sign out. Passwords are hashed (SHA-256, salted with
+     the username) before ever touching localStorage, so at least the
+     raw password isn't sitting in plain text - but this is still a
+     client-side check with no server behind it, so it stops casual
+     "let me see what's on here" browsing, not a determined attacker
+     with access to this device's browser storage. No profile name is
+     ever listed anywhere; you have to type the exact username.
+     ============================================================ */
+  async function hashPassword(username, password){
+    var data = new TextEncoder().encode(username.toLowerCase() + ':' + password);
+    var hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    return Array.from(new Uint8Array(hashBuffer)).map(function(b){ return b.toString(16).padStart(2,'0'); }).join('');
+  }
+  function showAuthError(msg){ el.authError.textContent = msg; el.authError.hidden = false; }
+  function clearAuthError(){ el.authError.hidden = true; }
+  function showAuthGate(){
+    el.signInUsername.value = ''; el.signInPassword.value = '';
+    el.createUsername.value = ''; el.createPassword.value = ''; el.createConfirm.value = '';
+    clearAuthError();
+    el.authGate.hidden = false;
+    el.signInUsername.focus();
+  }
+  function hideAuthGate(){ el.authGate.hidden = true; }
+
+  function completeSignIn(username, data){
+    currentProfile = username;
+    profileData = data;
+    settings = Object.assign({}, DEFAULT_SETTINGS, profileData.settings);
+    favorites = (profileData.favorites || []).slice();
+    buffer = '';
+    sessionStart = performance.now();
+    sessionCharsTyped = 0; sessionWordsCompleted = 0; lastBufferLenForStats = 0; lastSpaceCountForStats = 0;
+    cancelAutoSpacebar();
+    updateGridShape();
+    rebuildLayouts();
+    syncSettingsUI();
+    renderKeyboard();
+    renderOutput();
+    applyPredictions();
+    renderSuggestions();
+    renderFavorites();
+    updateStarButton();
+    el.calibHint.hidden = hasCalibration();
+    el.profileNameLabel.textContent = '👤 ' + username;
+    setPartyMode(favorites.some(function(f){ return f.toUpperCase() === EASTER_EGG_PHRASE; }));
+    hideAuthGate();
+  }
+
+  async function attemptPlatformSignIn(){
+    clearAuthError();
+    if(!claudePlatformId || !claudeDbNS){
+      showAuthError('Not available here — open the published Gaze Board link while signed in to your Claude account.');
+      return;
+    }
+    var btn = el.platformSignInBtn;
+    if(btn){ btn.disabled = true; btn.textContent = 'Connecting…'; }
+    try{
+      var snap = await claudeDbNS.doc('data/users/' + claudePlatformId + '/profile').get();
+      var data = cloneDocData(snap);
+      if(!data || typeof data !== 'object'){
+        data = { settings: Object.assign({}, DEFAULT_SETTINGS), calibration: null, favorites: [], adaptiveHistory: [] };
+      }
+      if(!data.stats) data.stats = defaultStats();
+      var label = 'Claude user';
+      if(claudeUserNS){
+        try{
+          var me = await claudeUserNS.me();
+          if(me && me.name) label = me.name;
+        }catch(e){}
+      }
+      usingPlatformAuth = true;
+      activeCloudDocRef = null;
+      completeSignIn(label, data);
+    }catch(e){
+      showAuthError('Could not reach your Claude account data — try again in a moment.');
+    }finally{
+      if(btn){ btn.disabled = false; btn.textContent = 'Continue with your Claude account'; }
+    }
+  }
+
+  async function attemptSignIn(username, password){
+    username = username.trim();
+    if(!username || !password){ showAuthError('Enter a username and password.'); return; }
+    var hash = await hashPassword(username, password);
+    var ref = await sharedAccountRef(username);
+    var data = null;
+    if(ref){
+      try{
+        var snap = await ref.get();
+        data = cloneDocData(snap);
+      }catch(e){ /* db unreachable this attempt - fall back to this browser's copy below */ }
+    }
+    if(!data){
+      var list = listProfiles();
+      if(list.indexOf(username) === -1){ showAuthError('No account with that username yet — try Create account.' + cloudSyncHint()); return; }
+      data = loadProfileData(username);
+    }
+    if(!data.passwordHash || data.passwordHash !== hash){ showAuthError('Incorrect username or password.'); return; }
+    var list2 = listProfiles();
+    if(list2.indexOf(username) === -1){ list2.push(username); saveProfileList(list2); }
+    usingPlatformAuth = false;
+    activeCloudDocRef = ref;
+    completeSignIn(username, data);
+  }
+
+  async function attemptCreateAccount(username, password, confirm){
+    username = username.trim();
+    if(!username || !password){ showAuthError('Choose a username and password.'); return; }
+    if(password.length < 4){ showAuthError('Password must be at least 4 characters.'); return; }
+    if(password !== confirm){ showAuthError('Passwords do not match.'); return; }
+    var ref = await sharedAccountRef(username);
+    var existing = null;
+    if(ref){
+      try{
+        var snap = await ref.get();
+        existing = cloneDocData(snap);
+      }catch(e){ /* db unreachable this attempt - fall back to this browser's copy below */ }
+    }
+    var list = listProfiles();
+    if(!existing && list.indexOf(username) !== -1) existing = loadProfileData(username);
+    if(existing && existing.passwordHash){ showAuthError('That username is taken — try Sign in instead.'); return; }
+    var hash = await hashPassword(username, password);
+    // If this username exists from before accounts had passwords (a
+    // migrated legacy profile), claim it and keep its saved data
+    // instead of overwriting it with a blank one.
+    var data = existing || { settings: Object.assign({}, DEFAULT_SETTINGS), calibration: null, favorites: [], adaptiveHistory: [] };
+    data.passwordHash = hash;
+    if(!data.stats) data.stats = defaultStats();
+    saveProfileData(username, data);
+    if(list.indexOf(username) === -1){ list.push(username); saveProfileList(list); }
+    usingPlatformAuth = false;
+    activeCloudDocRef = ref;
+    if(ref){
+      try{ await ref.set(JSON.parse(JSON.stringify(data))); }catch(e){ console.warn('Gaze Board: could not sync new account to the cloud', e); }
+    }
+    completeSignIn(username, data);
+  }
+
+  function signOut(){
+    if(!currentProfile) return;
+    recordSessionMetrics();
+    persistProfileData();
+    currentProfile = null;
+    usingPlatformAuth = false;
+    activeCloudDocRef = null;
+    buffer = '';
+    setPartyMode(false);
+    stopRealGazeTracking();
+    stopDevGazeSim();
+    showAuthGate();
+  }
+
+  /* ============================================================
+     DOM refs
+     ============================================================ */
+  var el = {
+    keyboard: document.getElementById('keyboard'),
+    outputText: document.getElementById('outputText'),
+    wpm: document.getElementById('wpmReadout'),
+    dwellReadout: document.getElementById('dwellReadout'),
+    bksp: document.getElementById('bkspReadout'),
+    adaptiveBadge: document.getElementById('adaptiveBadge'),
+    typingModeBtn: document.getElementById('typingModeBtn'),
+    blinkModeBtn: document.getElementById('blinkModeBtn'),
+    suggestions: document.getElementById('suggestions'),
+    suggestionList: document.getElementById('suggestionList'),
+    starBtn: document.getElementById('starBtn'),
+    favoriteList: document.getElementById('favoriteList'),
+    profileNameLabel: document.getElementById('profileNameLabel'),
+    signOutBtn: document.getElementById('signOutBtn'),
+    authGate: document.getElementById('authGate'),
+    platformSignInBtn: document.getElementById('platformSignInBtn'),
+    platformSignInNote: document.getElementById('platformSignInNote'),
+    authDivider: document.getElementById('authDivider'),
+    tabSignIn: document.getElementById('tabSignIn'),
+    tabCreate: document.getElementById('tabCreate'),
+    signInForm: document.getElementById('signInForm'),
+    createForm: document.getElementById('createForm'),
+    signInUsername: document.getElementById('signInUsername'),
+    signInPassword: document.getElementById('signInPassword'),
+    createUsername: document.getElementById('createUsername'),
+    createPassword: document.getElementById('createPassword'),
+    createConfirm: document.getElementById('createConfirm'),
+    authError: document.getElementById('authError'),
+    calibHint: document.getElementById('calibHint'),
+    settingsBtn: document.getElementById('settingsBtn'),
+    settingsPanel: document.getElementById('settingsPanel'),
+    settingsClose: document.getElementById('settingsClose'),
+    scrim: document.getElementById('scrim'),
+    adaptiveSwitch: document.getElementById('adaptiveSwitch'),
+    adaptiveValue: document.getElementById('adaptiveValue'),
+    dwellSlider: document.getElementById('dwellSlider'),
+    dwellValue: document.getElementById('dwellValue'),
+    dwellHint: document.getElementById('dwellHint'),
+    predictionSwitch: document.getElementById('predictionSwitch'),
+    predictionValue: document.getElementById('predictionValue'),
+    strengthSlider: document.getElementById('strengthSlider'),
+    strengthValue: document.getElementById('strengthValue'),
+    keyScaleSlider: document.getElementById('keyScaleSlider'),
+    keyScaleValue: document.getElementById('keyScaleValue'),
+    gazeDotSwitch: document.getElementById('gazeDotSwitch'),
+    gazeDotValue: document.getElementById('gazeDotValue'),
+    autoSpacebarSwitch: document.getElementById('autoSpacebarSwitch'),
+    autoSpacebarValue: document.getElementById('autoSpacebarValue'),
+    autoSpacebarDelaySlider: document.getElementById('autoSpacebarDelaySlider'),
+    autoSpacebarDelayValue: document.getElementById('autoSpacebarDelayValue'),
+    recalibrateBtn: document.getElementById('recalibrateBtn'),
+    resetTextBtn: document.getElementById('resetTextBtn'),
+    resetStatsBtn: document.getElementById('resetStatsBtn'),
+    calibration: document.getElementById('calibration'),
+    gazeDot: document.getElementById('gazeDot'),
+    gazeBlob: document.getElementById('gazeBlob'),
+    tutorialBtn: document.getElementById('tutorialBtn'),
+    tutorialOverlay: document.getElementById('tutorialOverlay'),
+    tutorialClose: document.getElementById('tutorialClose'),
+    tutorialDone: document.getElementById('tutorialDone'),
+    webcamQualitySlider: document.getElementById('webcamQualitySlider'),
+    webcamQualityValue: document.getElementById('webcamQualityValue'),
+    webcamQualityRow: document.getElementById('webcamQualityRow'),
+    realTrackerRow: document.getElementById('realTrackerRow'),
+    realTrackerStatus: document.getElementById('realTrackerStatus'),
+    sessionStatsGrid: document.getElementById('sessionStatsGrid'),
+    allTimeStatsGrid: document.getElementById('allTimeStatsGrid'),
+    statsCharts: document.getElementById('statsCharts')
+  };
+
+  /* ============================================================
+     Dwell interaction — shared by letter keys and dock keys.
+     A fixed setTimeout is the source of truth for selection; the
+     SVG ring is purely cosmetic and timed to match via --dwell-ms.
+     ============================================================ */
+  function flashSelected(node){
+    node.classList.remove('selected'); void node.offsetWidth; node.classList.add('selected');
+    setTimeout(function(){ node.classList.remove('selected'); }, 400);
+  }
+  // isPrimaryKey: when true and dev-sim is actively driving the keyboard
+  // (see registerKeyForBlobDrive), native mouse hover/click on this node
+  // is ignored entirely - the blob-hit-testing loop in startDevGazeSim
+  // owns selection instead, so the two can't fight over the same key.
+  function blobIsDrivingKeys(){
+    return (settings.gazeIndicator === 'simulate' || settings.gazeIndicator === 'real') && isDevUser();
+  }
+  function attachDwell(node, onCommit, isPrimaryKey){
+    var timer = null;
+    node.addEventListener('mouseenter', function(){
+      if(isPrimaryKey && blobIsDrivingKeys()) return;
+      node.classList.add('hover');
+      if(settings.blinkMode || !settings.typingMode) return;
+      node.classList.add('dwelling');
+      timer = setTimeout(function(){
+        node.classList.remove('dwelling');
+        flashSelected(node);
+        timer = null;
+        onCommit();
+      }, settings.dwellTime);
+    });
+    node.addEventListener('mouseleave', function(){
+      if(isPrimaryKey && blobIsDrivingKeys()) return;
+      node.classList.remove('hover');
+      if(timer){
+        clearTimeout(timer); timer = null;
+        logCancel();
+        var ring = node.querySelector('.ring-fg');
+        if(ring){
+          ring.style.transitionDuration = '0s';
+          node.classList.remove('dwelling');
+          requestAnimationFrame(function(){ ring.style.transitionDuration = ''; });
+        }
+      }
+    });
+    node.addEventListener('click', function(){
+      if(isPrimaryKey && blobIsDrivingKeys()) return;
+      if(!settings.blinkMode) return;
+      flashSelected(node);
+      onCommit();
+    });
+  }
+  var ringSvg = '<svg class="dwell-ring" viewBox="0 0 40 40" aria-hidden="true">' +
+    '<circle class="ring-bg" cx="20" cy="20" r="16"></circle>' +
+    '<circle class="ring-fg" cx="20" cy="20" r="16"></circle></svg>';
+
+  /* ============================================================
+     Suggestions are always blink-only, regardless of the board's
+     typing/blink mode. Gaze can rest on them to read the options
+     without ever auto-selecting one (avoids the "Midas touch"
+     problem); only a deliberate click (a stand-in for a blink)
+     commits a suggestion.
+     ============================================================ */
+  function attachBlinkOnly(node, onCommit){
+    node.addEventListener('mouseenter', function(){ node.classList.add('hover'); });
+    node.addEventListener('mouseleave', function(){ node.classList.remove('hover'); });
+    node.addEventListener('click', function(){
+      flashSelected(node);
+      onCommit();
+    });
+  }
+
+  /* ============================================================
+     Keyboard rendering
+     ============================================================ */
+  var cancelCount = 0;
+  function logCancel(){ cancelCount++; }
+
+  function renderKeyboard(){
+    el.keyboard.innerHTML = '';
+    keyDwellRegistry = [];
+    clearBlobKeyHover();
+    // Scale the whole grid - cell size and gap - together with the keys
+    // themselves, not just the buttons inside fixed-size cells, so keys
+    // actually get bigger and further apart rather than overflowing their cell.
+    var cellW = Math.round(164 * settings.keyScale);
+    var cellH = Math.round(142 * settings.keyScale);
+    var gapPx = Math.round(6 * settings.keyScale);
+    el.keyboard.style.gridTemplateColumns = 'repeat(' + COLS + ', ' + cellW + 'px)';
+    el.keyboard.style.gridTemplateRows = 'repeat(' + ROWS + ', ' + cellH + 'px)';
+    el.keyboard.style.gap = gapPx + 'px';
+    var layout = activeKeyset === 'secondary' ? SECONDARY_LAYOUT : LAYOUTS[settings.layout];
+    layout.forEach(function(k){
+      var btn = document.createElement('button');
+      btn.className = 'key';
+      btn.dataset.ch = k.ch;
+      btn.style.gridColumn = (k.c+1);
+      btn.style.gridRow = (k.r+1);
+      var w = Math.round(126 * k.scale * settings.keyScale);
+      var h = Math.round(110 * k.scale * settings.keyScale);
+      btn.style.width = w + 'px';
+      btn.style.height = h + 'px';
+      btn.style.fontSize = Math.round(32 * k.scale * settings.keyScale) + 'px';
+      btn.innerHTML = ringSvg + '<span class="key-label">' + k.ch + '</span>';
+      var commitFn = function(ch){ return function(){ handleCharCommit(ch); }; }(k.ch);
+      attachDwell(btn, commitFn, true);
+      registerKeyForBlobDrive(btn, commitFn);
+      el.keyboard.appendChild(btn);
+    });
+  }
+
+  var dockButtons = document.querySelectorAll('.dock-key');
+  dockButtons.forEach(function(btn){
+    btn.innerHTML = ringSvg + '<span class="key-label">' + btn.textContent + '</span>';
+    var action = btn.dataset.action;
+    attachDwell(btn, function(){
+      if(action === 'space') handleCharCommit(' ');
+      else if(action === 'backspace') handleBackspace();
+      else if(action === 'clear') handleClear();
+      else if(action === 'speak') handleSpeak();
+      else if(action === 'keyset') toggleKeyset();
+    });
+  });
+
+  function toggleKeyset(){
+    activeKeyset = activeKeyset === 'primary' ? 'secondary' : 'primary';
+    var label = document.querySelector('.dock-keyset .key-label');
+    if(label) label.textContent = activeKeyset === 'secondary' ? 'ABC' : '123';
+    renderKeyboard();
+    applyPredictions();
+  }
+
+  /* ============================================================
+     Text buffer, predictions, stats
+     ============================================================ */
+  function currentWord(){
+    var parts = buffer.split(/[^a-zA-Z]/);
+    return parts[parts.length-1] || '';
+  }
+  // The word before whatever's currently being typed (or before the
+  // cursor, if a word just ended with a space) - this is the "looks at
+  // your sentence" context clue for both word completion and the next-
+  // word ghost prediction below.
+  function previousWord(){
+    var before = buffer.slice(0, buffer.length - currentWord().length);
+    var words = before.trim().split(/[^a-zA-Z]+/).filter(Boolean);
+    return words.length ? words[words.length-1].toLowerCase() : '';
+  }
+
+  function handleCharCommit(ch){
+    if(calib && calib.phase === 'words'){ calibTypeChar(ch); return; }
+    buffer += ch;
+    keyLog.push({type: ch === ' ' ? 'space' : 'char', t: performance.now()});
+    afterEdit();
+  }
+  function handleBackspace(){
+    if(calib && calib.phase === 'words'){ calibBackspace(); return; }
+    if(!buffer.length) return;
+    // Array.from splits by Unicode code point, not UTF-16 code unit, so this
+    // removes one whole emoji (e.g. from the secondary keyset) instead of
+    // corrupting it into an orphaned surrogate half.
+    buffer = Array.from(buffer).slice(0,-1).join('');
+    keyLog.push({type:'backspace', t: performance.now()});
+    afterEdit();
+  }
+  function handleClear(){
+    buffer = '';
+    afterEdit();
+  }
+  function handleSpeak(){
+    if(!buffer.trim() || !('speechSynthesis' in window)) return;
+    var u = new SpeechSynthesisUtterance(buffer.trim());
+    speechSynthesis.cancel();
+    speechSynthesis.speak(u);
+  }
+
+  function trackStatsDelta(){
+    var delta = buffer.length - lastBufferLenForStats;
+    if(delta > 0) sessionCharsTyped += delta;
+    lastBufferLenForStats = buffer.length;
+    var spaceCount = (buffer.match(/ /g) || []).length;
+    var spaceDelta = spaceCount - lastSpaceCountForStats;
+    if(spaceDelta > 0) sessionWordsCompleted += spaceDelta;
+    lastSpaceCountForStats = spaceCount;
+  }
+
+  function afterEdit(){
+    trackStatsDelta();
+    renderOutput();
+    updateWPM();
+    applyPredictions();
+    renderSuggestions();
+    updateStarButton();
+    adaptiveAdjust();
+    checkAutoSpacebar();
+    renderStats();
+  }
+
+  /* ============================================================
+     Auto-spacebar — ported directly from auto_spacebar_experiment.py,
+     same function, same logic, just JS syntax. Checked after every
+     edit; if the current word is complete and nothing longer extends
+     it, starts a countdown (visualized as a ring fill on the space
+     key, same mechanism as the dwell ring) and auto-presses space if
+     nothing else is typed before it finishes. Any change to the word
+     - a new letter, a backspace - cancels a pending countdown.
+     ============================================================ */
+  function autoSpacebar(currentWordArg, dictionaryArg, enabled, delay){
+    if(!enabled) return false;
+
+    currentWordArg = currentWordArg.toLowerCase();
+    var wordsCount = 0;
+    for(var i=0; i<dictionaryArg.length; i++){
+      if(dictionaryArg[i].length > currentWordArg.length && dictionaryArg[i].slice(0, currentWordArg.length) === currentWordArg){
+        wordsCount++;
+      }
+    }
+
+    var isCompleteWord = dictionaryArg.indexOf(currentWordArg) !== -1;
+    return isCompleteWord && wordsCount === 0;
+  }
+
+  var autoSpacebarTimer = null;
+  var autoSpacebarWord = null;
+
+  function cancelAutoSpacebar(){
+    if(autoSpacebarTimer){
+      clearTimeout(autoSpacebarTimer);
+      autoSpacebarTimer = null;
+      var spaceBtn = document.querySelector('.dock-space');
+      if(spaceBtn) spaceBtn.classList.remove('auto-spacing');
+    }
+    autoSpacebarWord = null;
+  }
+
+  function checkAutoSpacebar(){
+    var word = currentWord();
+    if(word !== autoSpacebarWord) cancelAutoSpacebar();
+    if(autoSpacebarTimer) return; // already counting down for this exact word
+    if(!autoSpacebar(word, FULL_DICTIONARY, settings.autoSpacebarEnabled, settings.autoSpacebarDelay / 1000)) return;
+
+    autoSpacebarWord = word;
+    document.documentElement.style.setProperty('--auto-space-ms', settings.autoSpacebarDelay + 'ms');
+    var spaceBtn = document.querySelector('.dock-space');
+    if(spaceBtn) spaceBtn.classList.add('auto-spacing');
+    autoSpacebarTimer = setTimeout(function(){
+      autoSpacebarTimer = null;
+      if(spaceBtn) spaceBtn.classList.remove('auto-spacing');
+      handleCharCommit(' ');
+    }, settings.autoSpacebarDelay);
+  }
+
+  /* ============================================================
+     Word-pair (bigram) table for context: "looks at your sentence"
+     rather than just the letters of the current word. This is the
+     same idea real predictive keyboards used before neural models -
+     rank candidates by how often word B follows word A - just a much
+     smaller, hand-picked table (~60 of the most common English words,
+     several skewed toward AAC phrasing like "need help"/"feel sick")
+     instead of one mined from a huge corpus. Dictionary-frequency
+     completion below is always the fallback when the previous word
+     isn't in here, or doesn't suggest enough matches on its own.
+     ============================================================ */
+  var COMMON_BIGRAMS = {
+    'i':['am','need','want','have','would','think','can','like','was','feel','love','know','will','could'],
+    'you':['are','can','have','need','want','know','should','could','will','would','like'],
+    'he':['is','was','has','had','can','will','would','said'],
+    'she':['is','was','has','had','can','will','would','said'],
+    'it':['is','was','has','will','would','looks','seems'],
+    'we':['are','were','have','need','can','will','should','want'],
+    'they':['are','were','have','need','can','will','want'],
+    'am':['not','going','feeling','sorry','tired','hungry','thirsty','happy','okay','fine'],
+    'is':['not','a','the','it','this','that','going'],
+    'are':['not','you','we','they','going'],
+    'was':['not','a','the','going'],
+    'were':['not','going'],
+    'do':['you','not','we','they'],
+    'does':['not','it','this'],
+    'did':['not','you','it'],
+    'have':['a','to','not','you','been'],
+    'has':['a','not','been'],
+    'had':['a','not','been'],
+    'will':['not','you','be'],
+    'would':['like','you','not'],
+    'can':['you','i','not','we','help'],
+    'could':['you','i','not'],
+    'should':['i','you','we','not'],
+    'need':['to','help','a','some','more'],
+    'want':['to','a','some'],
+    'like':['to','that','this'],
+    'the':['same','bathroom','water','tv','light','door','phone','food'],
+    'a':['little','lot','bit','drink','break','minute'],
+    'to':['go','be','the','help','see','get','eat','drink','sleep','use','talk'],
+    'of':['the','water','course'],
+    'in':['the','a','my'],
+    'on':['the','my'],
+    'at':['the','home'],
+    'for':['the','a','me','help'],
+    'with':['me','you','the'],
+    'from':['the','my'],
+    'and':['then','i','you'],
+    'but':['i','you','not'],
+    'so':['i','you','much'],
+    'help':['me','with','please'],
+    'thank':['you'],
+    'please':['help','can','stop','wait'],
+    'how':['are','do','much','long'],
+    'what':['is','do','time','about'],
+    'where':['is','are','can'],
+    'when':['is','are','can','will'],
+    'why':['is','not','do'],
+    'who':['is','are'],
+    'go':['to','home','outside'],
+    'going':['to','home'],
+    'get':['a','some','up'],
+    'feel':['sick','tired','fine','better','happy','sad'],
+    'feeling':['sick','tired','fine','better'],
+    'not':['feeling','sure','yet','now'],
+    'more':['water','food','time','help'],
+    'some':['water','food','help','time'],
+    'my':['name','head','stomach','back','arm','leg'],
+    'your':['name','help']
+  };
+
+  function getWordSuggestions(word){
+    var prefix = word.toLowerCase();
+    if(!prefix) return [];
+    var prev = previousWord();
+    var out = (COMMON_BIGRAMS[prev] || []).filter(function(w){ return w.length > prefix.length && w.indexOf(prefix) === 0; }).slice(0,6);
+    for(var i=0; i<FULL_DICTIONARY.length && out.length<6; i++){
+      if(FULL_DICTIONARY[i].length > prefix.length && FULL_DICTIONARY[i].slice(0,prefix.length) === prefix && out.indexOf(FULL_DICTIONARY[i]) === -1) out.push(FULL_DICTIONARY[i]);
+    }
+    return out;
+  }
+  function renderSuggestions(){
+    if(calib){ return; }
+    var word = currentWord();
+    var suggestions = getWordSuggestions(word);
+    if(!suggestions.length){
+      el.suggestionList.innerHTML = '<p class="suggestion-empty">' + (word ? 'No matches yet.' : 'Start a word to see suggestions.') + '</p>';
+      return;
+    }
+    el.suggestionList.innerHTML = '';
+    suggestions.forEach(function(w){
+      var btn = document.createElement('button');
+      btn.className = 'suggestion-key';
+      btn.innerHTML = '<span class="key-label">' + w + '</span>';
+      attachBlinkOnly(btn, function(){ selectSuggestion(w); });
+      el.suggestionList.appendChild(btn);
+    });
+  }
+  function selectSuggestion(word){
+    var wordLen = currentWord().length;
+    buffer = buffer.slice(0, buffer.length - wordLen) + word + ' ';
+    keyLog.push({type:'char', t: performance.now()});
+    afterEdit();
+  }
+
+  /* Undocumented on purpose - not shown or hinted at anywhere in the UI.
+     Favoriting this exact phrase toggles a screen-shake + slow rainbow
+     glow on; removing it from favorites toggles it off. No confetti
+     overlay - it covered too much of the keyboard to actually keep
+     using while it ran - and no strobing/flashing, since rapid
+     high-contrast flashing is a real seizure trigger for photosensitive
+     epilepsy and this is an accessibility tool, not a risk worth a
+     hidden easter egg. */
+  var EASTER_EGG_PHRASE = 'AYDDYKHMMTI';
+  var partyAnimId = null;
+  function setPartyMode(on){ if(on) startPartyMode(); else stopPartyMode(); }
+  function startPartyMode(){
+    if(partyAnimId) return;
+    var appEl = document.querySelector('.app');
+    var reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if(reduceMotion || !appEl) return; // shake/glow are both motion - nothing to show instead
+    var glowT = 0;
+    (function frame(){
+      // Screen shake: random small position jitter on the whole app
+      // every frame - obnoxious and disorienting on purpose, but not a
+      // flash/strobe, so it doesn't carry the same seizure-trigger risk.
+      appEl.style.transform = 'translate(' + ((Math.random()-0.5)*24).toFixed(1) + 'px,' + ((Math.random()-0.5)*24).toFixed(1) + 'px)';
+      // Slow rainbow glow around the edge - a full hue cycle takes ~6
+      // seconds, nowhere near the roughly-3-times-a-second range that's
+      // an actual photosensitive-seizure risk, so it reads as festive
+      // ambiance rather than a flash.
+      glowT += 0.01;
+      var hue = (glowT*60) % 360;
+      appEl.style.boxShadow = '0 0 60px 12px hsla(' + hue.toFixed(0) + ',90%,60%,0.55)';
+      partyAnimId = requestAnimationFrame(frame);
+    })();
+  }
+  function stopPartyMode(){
+    if(partyAnimId) cancelAnimationFrame(partyAnimId);
+    partyAnimId = null;
+    var appEl = document.querySelector('.app');
+    if(appEl){ appEl.style.transform = ''; appEl.style.boxShadow = ''; }
+  }
+
+  /* ============================================================
+     Favorites — star a whole typed phrase for one-click reuse later.
+     The star is always blink-only, same reasoning as the suggestions
+     sidebar: gaze rests on your own typed text constantly while
+     composing, so a plain dwell-select here would misfire constantly.
+     Tapping the star again on an already-favorited phrase un-favorites
+     it - that's the only removal method, kept deliberately simple.
+     ============================================================ */
+  function toggleFavorite(){
+    var phrase = buffer.trim();
+    if(!phrase) return;
+    var idx = favorites.indexOf(phrase);
+    if(idx === -1) favorites.push(phrase);
+    else favorites.splice(idx, 1);
+    saveFavorites();
+    renderFavorites();
+    updateStarButton();
+    if(phrase.toUpperCase() === EASTER_EGG_PHRASE) setPartyMode(favorites.indexOf(phrase) !== -1);
+  }
+  function selectFavorite(phrase){
+    buffer = phrase + ' ';
+    keyLog.push({type:'char', t: performance.now()});
+    afterEdit();
+  }
+  function updateStarButton(){
+    var phrase = buffer.trim();
+    el.starBtn.disabled = !phrase;
+    var starred = phrase && favorites.indexOf(phrase) !== -1;
+    el.starBtn.classList.toggle('starred', !!starred);
+    el.starBtn.innerHTML = starred ? '&#9733;' : '&#9734;';
+  }
+  function renderFavorites(){
+    if(!favorites.length){
+      el.favoriteList.innerHTML = '<p class="suggestion-empty">No favorites yet — tap the star to save a phrase.</p>';
+      return;
+    }
+    el.favoriteList.innerHTML = '';
+    favorites.forEach(function(phrase){
+      var btn = document.createElement('button');
+      btn.className = 'suggestion-key';
+      btn.innerHTML = '<span class="key-label">' + phrase + '</span>';
+      attachBlinkOnly(btn, function(){ selectFavorite(phrase); });
+      el.favoriteList.appendChild(btn);
+    });
+  }
+  attachBlinkOnly(el.starBtn, toggleFavorite);
+
+  /* ============================================================
+     Ghost-text completion — the greyed-out preview after the cursor.
+     Mid-word, it's the rest of the top word-completion candidate (same
+     ranking as the sidebar, context included); at a word boundary, it's
+     a whole predicted next word from COMMON_BIGRAMS, or the single most
+     frequent dictionary word as a last resort. Always blink/click-only
+     to accept, same reasoning as the sidebar - gaze rests on your own
+     sentence constantly while composing, so dwell-select here would
+     misfire on nearly every letter.
+     ============================================================ */
+  function predictGhostCompletion(){
+    var word = currentWord();
+    if(word){
+      var suggestions = getWordSuggestions(word);
+      return suggestions.length ? suggestions[0].slice(word.length) : '';
+    }
+    var prev = previousWord();
+    if(!prev) return '';
+    var nexts = COMMON_BIGRAMS[prev];
+    if(nexts && nexts.length) return nexts[0];
+    return FULL_DICTIONARY[0] || '';
+  }
+  function acceptGhost(ghost){
+    if(!ghost) return;
+    var word = currentWord();
+    if(word){
+      // Mid-word: keys commit uppercase (HEL) but the dictionary/ghost
+      // text is lowercase - replace the whole word, same as
+      // selectSuggestion, instead of appending lowercase onto uppercase
+      // and producing something like "HELlo".
+      buffer = buffer.slice(0, buffer.length - word.length) + word.toLowerCase() + ghost + ' ';
+    }else{
+      buffer += ghost + ' ';
+    }
+    keyLog.push({type:'char', t: performance.now()});
+    afterEdit();
+  }
+
+  function renderOutput(){
+    if(!buffer){
+      el.outputText.innerHTML = '<span class="placeholder">Hover a key below to start &mdash; the mouse stands in for your eyes.</span>';
+      return;
+    }
+    el.outputText.textContent = buffer;
+    var cursor = document.createElement('span');
+    cursor.className = 'cursor-blink';
+    cursor.textContent = '▌';
+    el.outputText.appendChild(cursor);
+    var ghost = predictGhostCompletion();
+    if(ghost){
+      var ghostSpan = document.createElement('span');
+      ghostSpan.className = 'ghost-text';
+      ghostSpan.title = 'Click to accept';
+      ghostSpan.textContent = (currentWord() ? '' : ' ') + ghost;
+      attachBlinkOnly(ghostSpan, function(){ acceptGhost(ghost); });
+      el.outputText.appendChild(ghostSpan);
+    }
+  }
+
+  function updateWPM(){
+    var minutes = (performance.now() - sessionStart) / 60000;
+    var wpm = minutes > 0 ? (buffer.length / 5) / minutes : 0;
+    el.wpm.textContent = wpm.toFixed(1);
+  }
+
+  function applyPredictions(){
+    var keys = el.keyboard.querySelectorAll('.key');
+    keys.forEach(function(k){ k.style.background=''; k.style.boxShadow=''; });
+    if(!settings.predictionOn) return;
+    var preds = predictNextLetters(currentWord(), buffer) || [];
+    preds.forEach(function(p){
+      var alpha = Math.min(0.85, Math.max(0, 0.12 + 0.62 * p.confidence * settings.highlightStrength));
+      keys.forEach(function(k){
+        if(k.dataset.ch.toUpperCase() === String(p.letter).toUpperCase()){
+          k.style.background = 'rgba(var(--focus-rgb),' + alpha.toFixed(2) + ')';
+          k.style.boxShadow = '0 0 0 2px rgba(var(--focus-rgb),' + (alpha*0.6).toFixed(2) + ')';
+        }
+      });
+    });
+  }
+
+  function adaptiveAdjust(){
+    var recent = keyLog.slice(-20);
+    var total = recent.length;
+    var backspaces = recent.filter(function(k){ return k.type === 'backspace'; }).length;
+    el.bksp.textContent = total ? Math.round((backspaces/total)*100) : 0;
+  }
+
+  /* ============================================================
+     Adaptive dwell time — ported directly from adaptive_experiment.py
+     / adaptive_experiment.html. Blends how much of the physically
+     achievable typing speed (given the CURRENT dwell time PLUS the
+     unavoidable time spent moving gaze between targets) someone is
+     using against their backspace rate into one 0-1 performance score,
+     then nudges dwell time toward whatever that score says is ideal —
+     never by more than maxStep per tick, so it never jumps.
+     Runs on its own 10-second timer (not per-keystroke) using a rolling
+     10-second window of keyLog. dwellTime is stored in milliseconds
+     everywhere else in this file, so it's converted to/from seconds
+     right at this boundary since that's the unit the formula was built
+     and tested in.
+     ============================================================ */
+  function adaptiveAlgorithm(backspaceRate, avgLettersPer10s, dwellTime, travelTime, minDwell, maxDwell, maxStep){
+    minDwell = minDwell || 0.35;
+    maxDwell = maxDwell || 1.4;
+    maxStep = maxStep || 0.06;
+    var maxAchievable = 10 / (dwellTime + travelTime);
+    var utilization = Math.min(1, avgLettersPer10s / maxAchievable);
+    var performanceScore = Math.max(0, Math.min(1, utilization - backspaceRate));
+    var idealDwell = maxDwell - performanceScore * (maxDwell - minDwell);
+    var step = Math.max(-maxStep, Math.min(maxStep, idealDwell - dwellTime));
+    return dwellTime + step;
+  }
+
+  /* Real travel-time estimate from your own calibration data (median time to
+     reach a target, minus that flow's own fixed 800ms dwell) when you've run
+     it; falls back to a 300ms placeholder guess if you haven't calibrated. */
+  function getTravelTimeSeconds(){
+    try{
+      var profile = profileData.calibration;
+      if(!profile) return 0.3;
+      var times = (profile.targetResults || []).map(function(r){ return r.timeToEnterMs; });
+      if(!times.length) return 0.3;
+      times.sort(function(a,b){ return a-b; });
+      var median = times[Math.floor(times.length/2)];
+      return Math.max(0.05, (median - 800) / 1000);
+    }catch(e){ return 0.3; }
+  }
+
+  function runAdaptiveTick(){
+    if(!settings.adaptive) return;
+    var now = performance.now();
+    var window = keyLog.filter(function(k){ return now - k.t <= 10000; });
+    var total = window.length;
+    if(total === 0) return; // no activity - probably away, don't move dwell time on empty data
+    var backspaces = window.filter(function(k){ return k.type === 'backspace'; }).length;
+    var backspaceRate = backspaces/total;
+    var avgLettersPer10s = total - backspaces;
+    var travelTime = getTravelTimeSeconds();
+
+    var dwellSeconds = adaptiveAlgorithm(backspaceRate, avgLettersPer10s, settings.dwellTime/1000, travelTime);
+    settings.dwellTime = Math.min(1400, Math.max(350, Math.round(dwellSeconds*1000)));
+    document.documentElement.style.setProperty('--dwell-ms', settings.dwellTime + 'ms');
+    el.dwellReadout.textContent = settings.dwellTime;
+    el.dwellSlider.value = settings.dwellTime;
+    el.dwellValue.textContent = settings.dwellTime;
+    saveSettings();
+  }
+  setInterval(runAdaptiveTick, 10000);
+
+  /* ============================================================
+     Settings panel wiring
+     ============================================================ */
+  function openSettings(){ el.settingsPanel.classList.add('open'); el.scrim.classList.add('open'); el.settingsPanel.setAttribute('aria-hidden','false'); }
+  function closeSettings(){ el.settingsPanel.classList.remove('open'); el.scrim.classList.remove('open'); el.settingsPanel.setAttribute('aria-hidden','true'); }
+  el.settingsBtn.addEventListener('click', openSettings);
+  el.settingsClose.addEventListener('click', closeSettings);
+  el.scrim.addEventListener('click', closeSettings);
+
+  function openTutorial(){ el.tutorialOverlay.hidden = false; }
+  function closeTutorial(){ el.tutorialOverlay.hidden = true; }
+  el.tutorialBtn.addEventListener('click', openTutorial);
+  el.tutorialClose.addEventListener('click', closeTutorial);
+  el.tutorialDone.addEventListener('click', closeTutorial);
+  el.tutorialOverlay.addEventListener('click', function(e){
+    if(e.target === el.tutorialOverlay) closeTutorial();
+  });
+
+  document.querySelectorAll('.settings-tab').forEach(function(tabBtn){
+    tabBtn.addEventListener('click', function(){
+      document.querySelectorAll('.settings-tab').forEach(function(b){
+        var active = b === tabBtn;
+        b.classList.toggle('active', active);
+        b.setAttribute('aria-selected', active ? 'true' : 'false');
+      });
+      document.querySelectorAll('.settings-panel-body').forEach(function(panel){
+        panel.hidden = panel.dataset.tab !== tabBtn.dataset.tab;
+      });
+    });
+  });
+
+  document.querySelectorAll('input[name="layout"]').forEach(function(r){
+    r.addEventListener('change', function(){
+      if(r.checked){ settings.layout = r.value; saveSettings(); renderKeyboard(); applyPredictions(); }
+    });
+  });
+
+  document.querySelectorAll('input[name="panelPlacement"]').forEach(function(r){
+    r.addEventListener('change', function(){
+      if(r.checked){ settings.panelPlacement = r.value; applyPanelPlacement(); saveSettings(); }
+    });
+  });
+
+  document.querySelectorAll('input[name="contrastMode"]').forEach(function(r){
+    r.addEventListener('change', function(){
+      if(r.checked){ settings.contrastMode = r.value; applyContrastMode(); saveSettings(); }
+    });
+  });
+
+  document.querySelectorAll('input[name="confidenceColor"]').forEach(function(r){
+    r.addEventListener('change', function(){
+      if(r.checked){ settings.confidenceColor = r.value; applyConfidenceColor(); saveSettings(); }
+    });
+  });
+
+  document.querySelectorAll('input[name="colorScheme"]').forEach(function(r){
+    r.addEventListener('change', function(){
+      if(r.checked){
+        settings.colorScheme = r.value; applyColorScheme();
+        applyAccentPreset(); applyContrastMode(); applyConfidenceColor(); // re-resolve, since these depend on isDarkTheme()
+        saveSettings();
+      }
+    });
+  });
+
+  document.querySelectorAll('#colorSwatches .swatch').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      settings.accentColor = btn.dataset.color;
+      document.querySelectorAll('#colorSwatches .swatch').forEach(function(b){ b.classList.toggle('active', b === btn); });
+      applyAccentPreset();
+      saveSettings();
+    });
+  });
+
+  function syncSwitch(node, on){ node.setAttribute('aria-checked', on ? 'true' : 'false'); }
+
+  /* Re-applies every settings-panel control (and the header readouts
+     that mirror them) to whatever the live `settings` object currently
+     holds. Called once at startup, and again after completeSignIn()
+     swaps `settings` out for a different profile's, so the panel never
+     shows one person's dwell time while another's is actually active. */
+  function syncSettingsUI(){
+    document.querySelectorAll('input[name="layout"]').forEach(function(r){
+      r.checked = (r.value === settings.layout);
+    });
+    syncSwitch(el.typingModeBtn, settings.typingMode);
+    syncSwitch(el.blinkModeBtn, settings.blinkMode);
+    syncSwitch(el.adaptiveSwitch, settings.adaptive);
+    el.adaptiveValue.textContent = settings.adaptive ? 'on' : 'off';
+    el.adaptiveBadge.textContent = 'adaptive: ' + (settings.adaptive ? 'on' : 'off');
+    el.dwellSlider.value = settings.dwellTime;
+    el.dwellValue.textContent = settings.dwellTime;
+    el.dwellReadout.textContent = settings.dwellTime;
+    document.documentElement.style.setProperty('--dwell-ms', settings.dwellTime+'ms');
+    syncSwitch(el.predictionSwitch, settings.predictionOn);
+    el.predictionValue.textContent = settings.predictionOn ? 'on' : 'off';
+    el.strengthSlider.value = Math.round(settings.highlightStrength*100);
+    el.strengthValue.textContent = el.strengthSlider.value + '%';
+    el.keyScaleSlider.value = Math.round(settings.keyScale*100);
+    el.keyScaleValue.textContent = el.keyScaleSlider.value + '%';
+    syncSwitch(el.gazeDotSwitch, settings.showGazeDot);
+    el.gazeDotValue.textContent = settings.showGazeDot ? 'on' : 'off';
+    if(settings.gazeIndicator !== 'simulate') el.gazeDot.hidden = !settings.showGazeDot;
+    syncSwitch(el.autoSpacebarSwitch, settings.autoSpacebarEnabled);
+    el.autoSpacebarValue.textContent = settings.autoSpacebarEnabled ? 'on' : 'off';
+    el.autoSpacebarDelaySlider.value = settings.autoSpacebarDelay;
+    el.autoSpacebarDelayValue.textContent = settings.autoSpacebarDelay;
+    document.querySelectorAll('input[name="panelPlacement"]').forEach(function(r){
+      r.checked = (r.value === settings.panelPlacement);
+    });
+    document.querySelectorAll('input[name="contrastMode"]').forEach(function(r){
+      r.checked = (r.value === settings.contrastMode);
+    });
+    document.querySelectorAll('input[name="confidenceColor"]').forEach(function(r){
+      r.checked = (r.value === settings.confidenceColor);
+    });
+    document.querySelectorAll('input[name="colorScheme"]').forEach(function(r){
+      r.checked = (r.value === settings.colorScheme);
+    });
+    document.querySelectorAll('#colorSwatches .swatch').forEach(function(btn){
+      btn.classList.toggle('active', btn.dataset.color === settings.accentColor);
+    });
+    applyColorScheme();
+    applyAccentPreset();
+    applyContrastMode();
+    applyConfidenceColor();
+    applyPanelPlacement();
+    applyDevAccess();
+    applyGazeIndicator();
+    renderStats();
+  }
+
+  el.typingModeBtn.addEventListener('click', function(){
+    settings.typingMode = !settings.typingMode;
+    if(settings.typingMode) settings.blinkMode = false;
+    syncSwitch(el.typingModeBtn, settings.typingMode);
+    syncSwitch(el.blinkModeBtn, settings.blinkMode);
+    saveSettings();
+  });
+  el.blinkModeBtn.addEventListener('click', function(){
+    settings.blinkMode = !settings.blinkMode;
+    if(settings.blinkMode) settings.typingMode = false;
+    syncSwitch(el.blinkModeBtn, settings.blinkMode);
+    syncSwitch(el.typingModeBtn, settings.typingMode);
+    saveSettings();
+  });
+
+  el.adaptiveSwitch.addEventListener('click', function(){
+    settings.adaptive = !settings.adaptive;
+    syncSwitch(el.adaptiveSwitch, settings.adaptive);
+    el.adaptiveValue.textContent = settings.adaptive ? 'on' : 'off';
+    el.adaptiveBadge.textContent = 'adaptive: ' + (settings.adaptive ? 'on' : 'off');
+    if(!settings.adaptive){ settings.dwellTime = settings.manualDwell; document.documentElement.style.setProperty('--dwell-ms', settings.dwellTime+'ms'); el.dwellReadout.textContent = settings.dwellTime; el.dwellSlider.value = settings.dwellTime; el.dwellValue.textContent = settings.dwellTime; }
+    saveSettings();
+  });
+
+  el.dwellSlider.addEventListener('input', function(){
+    if(settings.adaptive){
+      settings.adaptive = false;
+      syncSwitch(el.adaptiveSwitch, false);
+      el.adaptiveValue.textContent = 'off';
+      el.adaptiveBadge.textContent = 'adaptive: off';
+    }
+    settings.manualDwell = Number(el.dwellSlider.value);
+    settings.dwellTime = settings.manualDwell;
+    el.dwellValue.textContent = settings.dwellTime;
+    el.dwellReadout.textContent = settings.dwellTime;
+    document.documentElement.style.setProperty('--dwell-ms', settings.dwellTime+'ms');
+    saveSettings();
+  });
+
+  el.predictionSwitch.addEventListener('click', function(){
+    settings.predictionOn = !settings.predictionOn;
+    syncSwitch(el.predictionSwitch, settings.predictionOn);
+    el.predictionValue.textContent = settings.predictionOn ? 'on' : 'off';
+    saveSettings(); applyPredictions();
+  });
+
+  el.strengthSlider.addEventListener('input', function(){
+    settings.highlightStrength = Number(el.strengthSlider.value)/100;
+    el.strengthValue.textContent = el.strengthSlider.value + '%';
+    saveSettings(); applyPredictions();
+  });
+
+  el.keyScaleSlider.addEventListener('input', function(){
+    settings.keyScale = Number(el.keyScaleSlider.value)/100;
+    el.keyScaleValue.textContent = el.keyScaleSlider.value + '%';
+    updateGridShape(); rebuildLayouts();
+    saveSettings(); renderKeyboard(); applyPredictions();
+  });
+
+  function toggleGazeDot(){
+    settings.showGazeDot = !settings.showGazeDot;
+    syncSwitch(el.gazeDotSwitch, settings.showGazeDot);
+    el.gazeDotValue.textContent = settings.showGazeDot ? 'on' : 'off';
+    if(settings.gazeIndicator !== 'simulate') el.gazeDot.hidden = !settings.showGazeDot;
+    saveSettings();
+  }
+  el.gazeDotSwitch.addEventListener('click', toggleGazeDot);
+
+  /* ============================================================
+     Dev tool: eye-tracker simulation. Replaces the tidy gaze dot with
+     an ellipse whose position, size and color all wander the way a
+     real webcam/Pi-camera gaze estimate would - see the setting's own
+     hint text in the Dev tab for the model in plain language.
+     ============================================================ */
+  var devMouseX = 0, devMouseY = 0, devPrevX = 0, devPrevY = 0, devConfidence = 1, devAnimId = null, devWobbleT = 0, devAngle = 0;
+  document.addEventListener('mousemove', function(e){
+    // Real tracking owns devMouseX/Y from the webcam gaze listener below -
+    // the mouse must not fight it for control of the same two variables.
+    if(settings.gazeIndicator === 'real' && isDevUser()) return;
+    devMouseX = e.clientX; devMouseY = e.clientY;
+    if(settings.gazeIndicator === 'simulate' && isDevUser()) return; // the blob's own loop below reads devMouseX/Y each frame
+    if(!settings.showGazeDot) return;
+    el.gazeDot.style.left = e.clientX + 'px';
+    el.gazeDot.style.top = e.clientY + 'px';
+  });
+  function confidenceToBlobColor(c){
+    // Low confidence -> blue, high confidence -> orange: a two-hue scale
+    // safe for red/green colorblindness, the far most common kind.
+    var low = [37,99,235], high = [217,119,6];
+    return [
+      Math.round(low[0]+(high[0]-low[0])*c),
+      Math.round(low[1]+(high[1]-low[1])*c),
+      Math.round(low[2]+(high[2]-low[2])*c)
+    ];
+  }
+  function confidenceBlobGradient(c){
+    // A genuine two-tone radial blend, not one hue just fading in
+    // opacity: the center always reads further toward "confident"
+    // (orange) than the edge does, and the edge always reads further
+    // toward "uncertain" (blue) than the center does - center = the
+    // actual estimate, edge = the surrounding uncertainty region, the
+    // way a real gaze confidence heatmap reads. The whole balance still
+    // slides with the instant confidence value, so a low-confidence
+    // frame's core looks visibly bluer than a high-confidence frame's does.
+    var centerRgb = confidenceToBlobColor(Math.min(1, c*0.65+0.35)).join(',');
+    var edgeRgb = confidenceToBlobColor(Math.max(0, c*0.65-0.2)).join(',');
+    return 'radial-gradient(circle, rgba('+centerRgb+',0.92) 0%, rgba('+centerRgb+',0.55) 45%, rgba('+edgeRgb+',0.3) 80%, rgba('+edgeRgb+',0.05) 100%)';
+  }
+
+  /* When the dev webcam simulation is active, the blob doesn't just sit
+     on top of the real cursor for show - it actually drives which key
+     gets selected, the same way a real (imprecise) gaze estimate would
+     have to. Keyboard keys register themselves here; each simulation
+     frame hit-tests the blob's own jittered position against this list
+     instead of the mouse's real position, and runs its own independent
+     dwell timer. attachDwell()'s native mouse handling steps aside for
+     these same nodes while this is active (see isPrimaryKey above), so
+     the two never fight over one key at once. */
+  var keyDwellRegistry = [];
+  var blobHoverEntry = null, blobDwellStart = null;
+  // The key a blob-driven dwell just committed on - it won't arm again
+  // until the blob genuinely leaves it, even though the hit test below
+  // re-runs every animation frame and would otherwise see the blob still
+  // sitting on the same key and fire again immediately. Same guarantee
+  // the real mouse path gets for free from mouseenter/mouseleave only
+  // firing on an actual boundary crossing.
+  var blobCooldownEntry = null;
+  function registerKeyForBlobDrive(node, onCommit){
+    keyDwellRegistry.push({ node: node, onCommit: onCommit });
+  }
+  function clearBlobKeyHover(){
+    if(blobHoverEntry) blobHoverEntry.node.classList.remove('hover', 'dwelling');
+    blobHoverEntry = null;
+    blobDwellStart = null;
+  }
+  function updateBlobKeyHover(x, y){
+    var target = null;
+    for(var i=0; i<keyDwellRegistry.length; i++){
+      var entry = keyDwellRegistry[i];
+      var r = entry.node.getBoundingClientRect();
+      if(x >= r.left && x <= r.right && y >= r.top && y <= r.bottom){ target = entry; break; }
+    }
+    if(blobCooldownEntry && target !== blobCooldownEntry) blobCooldownEntry = null;
+    if(target !== blobHoverEntry){
+      clearBlobKeyHover();
+      blobHoverEntry = target;
+      // Same rule as native dwell: blink mode or typing mode off means
+      // hovering alone should never select anything, including here -
+      // there's no synthetic "blink" for the blob to trigger on, so
+      // blob-driven selection just idles (still visible) in that case.
+      // A key still on cooldown gets the same idle treatment: visibly
+      // hovered, but never re-arms into "dwelling".
+      if(target && target !== blobCooldownEntry && settings.typingMode && !settings.blinkMode){
+        target.node.classList.add('hover', 'dwelling');
+        blobDwellStart = performance.now();
+      }else if(target){
+        target.node.classList.add('hover');
+      }
+    }
+    if(blobHoverEntry && blobDwellStart !== null && performance.now() - blobDwellStart >= settings.dwellTime){
+      var committed = blobHoverEntry;
+      clearBlobKeyHover();
+      blobCooldownEntry = committed;
+      flashSelected(committed.node);
+      committed.onCommit();
+    }
+  }
+  /* Both ends grounded in published webcam-gaze-tracking studies (see
+     the Webcam quality setting's own hint text for citations): ~100px
+     is close to the best documented accuracy for calibrated, well-lit
+     webcam-only tracking; ~340px is typical of sparse-calibration or
+     poor-condition setups in the same body of research. */
+  function webcamErrorFloorPx(){
+    var q = Math.max(0, Math.min(100, settings.webcamQuality));
+    return 340 + (100-340) * (q/100);
+  }
+  function startDevGazeSim(){
+    if(devAnimId) return;
+    el.gazeDot.hidden = true;
+    el.gazeBlob.hidden = false;
+    devPrevX = devMouseX; devPrevY = devMouseY; devConfidence = 1; devWobbleT = 0; devAngle = 0;
+    (function frame(){
+      var real = settings.gazeIndicator === 'real';
+      var dx = devMouseX-devPrevX, dy = devMouseY-devPrevY;
+      var speed = Math.hypot(dx, dy);
+      devPrevX = devMouseX; devPrevY = devMouseY;
+      if(speed > 0.6) devAngle = Math.atan2(dy, dx); // hold last heading while still, instead of snapping to 0
+      var blobX, blobY, size;
+      if(real){
+        // Real tracker: devMouseX/Y are WebGazer's own screen-space gaze
+        // prediction (set by onRealGazeData below) - already noisy on its
+        // own, so no synthetic jitter gets layered on top of it. Confidence
+        // comes from how tightly the last dozen real predictions cluster
+        // together, not a speed heuristic - the genuine analog of the
+        // simulated blob's speed-based confidence guess.
+        devConfidence += (realConfidenceTarget()-devConfidence) * 0.15;
+        blobX = devMouseX; blobY = devMouseY;
+        size = Math.min(560, 90 + (1-devConfidence)*260);
+      }else{
+        var target = Math.max(0.12, 1 - Math.min(1, speed/40));
+        devConfidence += (target-devConfidence) * 0.15;
+        var floorPx = webcamErrorFloorPx();
+        var jitter = floorPx*0.12 + (1-devConfidence)*floorPx*0.35;
+        blobX = devMouseX + (Math.random()-0.5)*jitter;
+        blobY = devMouseY + (Math.random()-0.5)*jitter;
+        size = Math.min(560, floorPx + (1-devConfidence)*floorPx*1.5);
+      }
+
+      // Two real, separate effects, not one generic "wobble": video-based
+      // trackers measure vertical gaze less precisely than horizontal
+      // (smaller range of motion, harder to detect), so the resting shape
+      // is a bit taller than wide even standing still; separately, a
+      // webcam's frame rate + processing latency mean the reported
+      // position blurs and lags behind the true one while the eye is
+      // moving fast (a saccade) - modeled here as stretching along the
+      // current heading, scaling up with speed, snapping back as it settles.
+      var stretch = 1 + Math.min(1.6, speed/26);
+      var baseH = size * 1.18;
+
+      // Organic, softly-morphing outline (four corners breathing out of
+      // phase) so this reads as a blob settling/drifting rather than a
+      // rigid shape shaking in place - a rendering choice for legibility,
+      // not a claim about real tracker output silhouettes.
+      devWobbleT += 0.045 + speed*0.002;
+      var r1 = 50 + Math.sin(devWobbleT)*11;
+      var r2 = 50 + Math.sin(devWobbleT*1.3 + 1.4)*11;
+      var r3 = 50 + Math.sin(devWobbleT*0.85 + 2.6)*11;
+      var r4 = 50 + Math.sin(devWobbleT*1.15 + 4.0)*11;
+
+      el.gazeBlob.style.left = blobX+'px';
+      el.gazeBlob.style.top = blobY+'px';
+      el.gazeBlob.style.width = size+'px';
+      el.gazeBlob.style.height = baseH+'px';
+      el.gazeBlob.style.borderRadius = r1+'% '+(100-r1)+'% '+r3+'% '+(100-r3)+'% / '+r2+'% '+r4+'% '+(100-r4)+'% '+(100-r2)+'%';
+      el.gazeBlob.style.transform = 'translate(-50%,-50%) rotate('+devAngle+'rad) scaleX('+stretch.toFixed(2)+')';
+      el.gazeBlob.style.background = confidenceBlobGradient(devConfidence);
+      updateBlobKeyHover(blobX, blobY);
+      devAnimId = requestAnimationFrame(frame);
+    })();
+  }
+  function stopDevGazeSim(){
+    if(devAnimId) cancelAnimationFrame(devAnimId);
+    devAnimId = null;
+    el.gazeBlob.hidden = true;
+    el.gazeDot.hidden = !settings.showGazeDot;
+    clearBlobKeyHover();
+    blobCooldownEntry = null;
+  }
+
+  /* ============================================================
+     Dev tool: REAL webcam eye tracking, via WebGazer.js (Brown
+     University, brownhci/WebGazer - the same project the simulated
+     mode's accuracy numbers are drawn from). Runs entirely client-side
+     in the browser - no video frame ever leaves this device - and its
+     face-tracking model files are self-hosted alongside this page
+     (see the mediapipe/face_mesh/ files published with this artifact)
+     rather than fetched from WebGazer's own CDN, since this page's
+     sandbox blocks that specific kind of cross-origin runtime fetch;
+     WebGazer already looks for them at a page-relative path by
+     default, so no patching was needed, just hosting the files it
+     already expects to find next to it.
+     Feeds real gaze coordinates into the exact same devMouseX/Y +
+     blob-rendering + updateBlobKeyHover pipeline the simulated mode
+     already built (see the branch in startDevGazeSim's frame loop
+     above) instead of a separate code path.
+     ============================================================ */
+  var WEBGAZER_SCRIPT_URL = 'https://cdn.jsdelivr.net/npm/webgazer@3.5.3/dist/webgazer.js';
+  var webgazerLoadPromise = null;
+  function loadWebgazerScript(){
+    if(window.webgazer) return Promise.resolve();
+    if(webgazerLoadPromise) return webgazerLoadPromise;
+    webgazerLoadPromise = new Promise(function(resolve, reject){
+      var s = document.createElement('script');
+      s.src = WEBGAZER_SCRIPT_URL;
+      s.onload = function(){ resolve(); };
+      s.onerror = function(){ webgazerLoadPromise = null; reject(new Error('load failed')); };
+      document.head.appendChild(s);
+    });
+    return webgazerLoadPromise;
+  }
+  var realGazeHistory = [];
+  function pushRealGazeSample(x, y){
+    realGazeHistory.push({x:x, y:y});
+    if(realGazeHistory.length > 12) realGazeHistory.shift();
+  }
+  function realConfidenceTarget(){
+    if(realGazeHistory.length < 3) return 0.3;
+    var xs = realGazeHistory.map(function(p){ return p.x; });
+    var ys = realGazeHistory.map(function(p){ return p.y; });
+    var mx = xs.reduce(function(a,b){ return a+b; }, 0)/xs.length;
+    var my = ys.reduce(function(a,b){ return a+b; }, 0)/ys.length;
+    // Average distance of the last dozen predictions from their own
+    // mean - a tight recent cluster reads as confident, a scattered one
+    // as not, the real-data analog of the simulated blob's speed guess.
+    var spread = xs.reduce(function(s,x,i){ return s + Math.hypot(x-mx, ys[i]-my); }, 0) / xs.length;
+    return Math.max(0.1, Math.min(1, 1 - spread/220));
+  }
+  function onRealGazeData(data){
+    if(!data) return;
+    devMouseX = data.x; devMouseY = data.y;
+    pushRealGazeSample(data.x, data.y);
+  }
+  function setRealTrackerStatus(state, text){
+    if(!el.realTrackerStatus) return;
+    el.realTrackerStatus.textContent = text;
+    el.realTrackerStatus.className = 'real-tracker-status' + (state ? ' ' + state : '');
+    el.realTrackerStatus.hidden = !text;
+  }
+  var realTrackingActive = false, realNoDataTimer = null;
+  async function startRealGazeTracking(){
+    if(realTrackingActive) return;
+    realGazeHistory = [];
+    setRealTrackerStatus('loading', 'Loading the eye-tracking library…');
+    try{
+      await loadWebgazerScript();
+    }catch(e){
+      setRealTrackerStatus('error', 'Could not load the eye-tracking library — check your connection and try again.');
+      return;
+    }
+    setRealTrackerStatus('loading', 'Requesting camera access…');
+    // Ask for the camera directly first, before handing control to
+    // WebGazer - this is the only way to get the browser's OWN specific
+    // error name (permission denied vs. no camera vs. blocked by this
+    // page's security policy) instead of whatever generic failure
+    // WebGazer itself surfaces for every kind of problem.
+    try{
+      var probeStream = await navigator.mediaDevices.getUserMedia({video: true});
+      probeStream.getTracks().forEach(function(t){ t.stop(); });
+    }catch(e){
+      console.error('Gaze Board: camera probe failed', e);
+      var reason = (e && e.name) || 'Unknown';
+      var msg = 'Camera error: ' + reason + '.';
+      if(reason === 'NotAllowedError') msg += ' Either the permission prompt was denied, or this page/frame is not allowed to ask at all — try opening this page in its own browser tab.';
+      else if(reason === 'NotFoundError') msg += ' No camera was found on this device.';
+      else if(reason === 'SecurityError') msg += ' This page is not allowed to use the camera in its current context — try opening it in its own browser tab.';
+      else msg += ' (' + ((e && e.message) || 'no further detail') + ') — check the browser console for the full error.';
+      setRealTrackerStatus('error', msg);
+      return;
+    }
+    try{
+      window.webgazer.setRegression('ridge');
+      window.webgazer.setGazeListener(onRealGazeData);
+      await window.webgazer.begin();
+      window.webgazer.showVideoPreview(true).showFaceOverlay(true).showFaceFeedbackBox(false).showPredictionPoints(false);
+    }catch(e){
+      console.error('Gaze Board: webgazer.begin() failed', e);
+      setRealTrackerStatus('error', 'Camera access is granted, but the tracker itself failed to start (' + ((e && e.message) || e) + ') — check the browser console for detail.');
+      return;
+    }
+    realTrackingActive = true;
+    setRealTrackerStatus('active', 'Live — look around and use the keyboard normally. Accuracy improves the more you use it (WebGazer learns from your clicks).');
+    if(realNoDataTimer) clearTimeout(realNoDataTimer);
+    realNoDataTimer = setTimeout(function(){
+      if(realTrackingActive && realGazeHistory.length === 0){
+        setRealTrackerStatus('error', 'No camera data came through — check that you allowed camera access, that no other app is using the camera, or try opening this page in its own browser tab.');
+      }
+    }, 6000);
+    startDevGazeSim();
+  }
+  function stopRealGazeTracking(){
+    if(realNoDataTimer){ clearTimeout(realNoDataTimer); realNoDataTimer = null; }
+    if(!realTrackingActive) return;
+    realTrackingActive = false;
+    try{ if(window.webgazer) window.webgazer.end(); }catch(e){}
+    setRealTrackerStatus('', '');
+  }
+  function webcamQualityLabel(q){
+    if(q < 20) return 'Rough, uncalibrated webcam';
+    if(q < 45) return 'Typical laptop webcam';
+    if(q < 75) return 'Good webcam, well lit';
+    return 'Best-case, calibrated webcam';
+  }
+  function applyGazeIndicator(){
+    if(!isDevUser() && settings.gazeIndicator !== 'default') settings.gazeIndicator = 'default';
+    document.querySelectorAll('input[name="gazeIndicator"]').forEach(function(r){
+      r.checked = (r.value === settings.gazeIndicator);
+    });
+    el.webcamQualitySlider.value = settings.webcamQuality;
+    el.webcamQualityValue.textContent = webcamQualityLabel(settings.webcamQuality);
+    el.webcamQualityRow.hidden = settings.gazeIndicator !== 'simulate';
+    if(el.realTrackerRow) el.realTrackerRow.hidden = settings.gazeIndicator !== 'real';
+    if(settings.gazeIndicator === 'real' && isDevUser()){
+      stopDevGazeSim();
+      startRealGazeTracking();
+    }else{
+      stopRealGazeTracking();
+      if(settings.gazeIndicator === 'simulate' && isDevUser()) startDevGazeSim();
+      else stopDevGazeSim();
+    }
+  }
+  document.querySelectorAll('input[name="gazeIndicator"]').forEach(function(r){
+    r.addEventListener('change', function(){
+      if(r.checked){ settings.gazeIndicator = r.value; applyGazeIndicator(); saveSettings(); }
+    });
+  });
+  el.webcamQualitySlider.addEventListener('input', function(){
+    settings.webcamQuality = Number(el.webcamQualitySlider.value);
+    el.webcamQualityValue.textContent = webcamQualityLabel(settings.webcamQuality);
+    saveSettings();
+  });
+  el.autoSpacebarSwitch.addEventListener('click', function(){
+    settings.autoSpacebarEnabled = !settings.autoSpacebarEnabled;
+    syncSwitch(el.autoSpacebarSwitch, settings.autoSpacebarEnabled);
+    el.autoSpacebarValue.textContent = settings.autoSpacebarEnabled ? 'on' : 'off';
+    if(!settings.autoSpacebarEnabled) cancelAutoSpacebar();
+    saveSettings();
+  });
+
+  el.autoSpacebarDelaySlider.addEventListener('input', function(){
+    settings.autoSpacebarDelay = Number(el.autoSpacebarDelaySlider.value);
+    el.autoSpacebarDelayValue.textContent = settings.autoSpacebarDelay;
+    cancelAutoSpacebar();
+    saveSettings();
+  });
+
+  el.resetTextBtn.addEventListener('click', function(){ handleClear(); });
+  el.resetStatsBtn.addEventListener('click', function(){
+    keyLog = []; cancelCount = 0; sessionStart = performance.now();
+    el.bksp.textContent = '0'; el.wpm.textContent = '0.0';
+  });
+
+  /* ============================================================
+     Calibration flow
+     Phase 1 measures how long the mouse takes to reach five spread-out
+     targets (a stand-in for saccade + settle time on real gaze hardware)
+     and seeds a starting dwell time from the median.
+     Phase 2 has the user spell three short words on the real keyboard
+     to record backspace rate and pace under normal typing conditions.
+     Mouse jitter is not a stand-in for eye jitter/nystagmus — this only
+     seeds the timing model, it doesn't validate real gaze accuracy.
+     ============================================================ */
+  var CALIB_TARGETS = [
+    {x:50,y:50,label:'center'}, {x:15,y:20,label:'top-left'}, {x:85,y:20,label:'top-right'},
+    {x:15,y:80,label:'bottom-left'}, {x:85,y:80,label:'bottom-right'}
+  ];
+  var CALIB_WORDS = ['cat','wave','help'];
+  var prevTypingMode;
+
+  function startCalibration(){
+    prevTypingMode = settings.typingMode;
+    settings.typingMode = true;
+    syncSwitch(el.typingModeBtn, true);
+    calib = { phase:'intro', targetIndex:0, targetResults:[], wordIndex:0, wordBuffer:'', wordResults:[] };
+    el.calibration.hidden = false;
+    el.calibration.classList.remove('banner-only');
+    document.querySelector('.output-strip').style.display = 'none';
+    el.suggestions.style.display = 'none';
+    renderCalibIntro();
+  }
+  function endCalibration(baselineDwell){
+    profileData.calibration = {
+      completedAt: new Date().toISOString(),
+      targetResults: calib.targetResults,
+      wordResults: calib.wordResults,
+      baselineDwell: baselineDwell
+    };
+    persistProfileData();
+    if(baselineDwell){
+      settings.manualDwell = baselineDwell;
+      settings.dwellTime = baselineDwell;
+      document.documentElement.style.setProperty('--dwell-ms', baselineDwell+'ms');
+      el.dwellSlider.value = baselineDwell; el.dwellValue.textContent = baselineDwell; el.dwellReadout.textContent = baselineDwell;
+      saveSettings();
+    }
+    settings.typingMode = prevTypingMode;
+    syncSwitch(el.typingModeBtn, prevTypingMode);
+    calib = null;
+    el.calibration.hidden = true;
+    el.calibration.innerHTML = '';
+    el.calibHint.hidden = true;
+    document.querySelector('.output-strip').style.display = '';
+    el.suggestions.style.display = '';
+    renderSuggestions();
+  }
+
+  function renderCalibIntro(){
+    el.calibration.innerHTML =
+      '<div class="calib-card"><h2>Quick calibration</h2>' +
+      '<p>This mouse version can’t replicate real eye jitter, but it can still learn your pace.</p>' +
+      '<ol><li>Move to five dots around the screen and hold.</li>' +
+      '<li>Spell three short words on the keyboard.</li></ol>' +
+      '<button class="primary-btn" id="calibBegin">Begin</button>' +
+      '<button class="text-btn" id="calibSkip">Skip for now</button></div>';
+    document.getElementById('calibBegin').addEventListener('click', function(){ calib.phase='targets'; renderCalibTarget(); });
+    document.getElementById('calibSkip').addEventListener('click', function(){ endCalibration(null); });
+  }
+
+  function renderCalibTarget(){
+    el.calibration.innerHTML = '<div class="calib-progress">Target ' + (calib.targetIndex+1) + ' of ' + CALIB_TARGETS.length + '</div>';
+    var t = CALIB_TARGETS[calib.targetIndex];
+    var dot = document.createElement('div');
+    dot.className = 'calib-target';
+    dot.style.left = t.x + '%'; dot.style.top = t.y + '%';
+    dot.innerHTML = ringSvg;
+    el.calibration.appendChild(dot);
+    var shownAt = performance.now();
+    var timer = null;
+    dot.addEventListener('mouseenter', function(){
+      dot.classList.add('dwelling');
+      timer = setTimeout(function(){
+        var timeToEnter = Math.round(performance.now() - shownAt);
+        calib.targetResults.push({label:t.label, timeToEnterMs:timeToEnter});
+        calib.targetIndex++;
+        if(calib.targetIndex < CALIB_TARGETS.length) renderCalibTarget();
+        else startCalibWords();
+      }, 800);
+    });
+    dot.addEventListener('mouseleave', function(){
+      if(timer){ clearTimeout(timer); timer=null; }
+      var ring = dot.querySelector('.ring-fg');
+      if(ring){ ring.style.transitionDuration='0s'; dot.classList.remove('dwelling'); requestAnimationFrame(function(){ ring.style.transitionDuration=''; }); }
+    });
+  }
+
+  function startCalibWords(){
+    calib.phase = 'words';
+    calib.wordIndex = 0;
+    calib.wordBuffer = '';
+    calib.wordStart = performance.now();
+    calib.wordBackspaces = 0;
+    el.calibration.classList.add('banner-only');
+    renderCalibBanner();
+  }
+  function renderCalibBanner(){
+    var word = CALIB_WORDS[calib.wordIndex];
+    el.calibration.innerHTML = '<div class="calib-banner">Spell&nbsp;<b>' + word.toUpperCase() + '</b>' +
+      '&nbsp;(' + (calib.wordIndex+1) + '/' + CALIB_WORDS.length + ')' +
+      '&nbsp;&mdash;&nbsp;<span class="mono">' + calib.wordBuffer.toUpperCase() + '</span></div>';
+  }
+  function calibTypeChar(ch){
+    if(ch === ' ') return;
+    calib.wordBuffer += ch;
+    renderCalibBanner();
+    var target = CALIB_WORDS[calib.wordIndex];
+    if(calib.wordBuffer.length >= target.length){
+      var timeMs = Math.round(performance.now() - calib.wordStart);
+      calib.wordResults.push({ word:target, typed:calib.wordBuffer, correct: calib.wordBuffer.toLowerCase()===target, timeMs:timeMs, backspaces:calib.wordBackspaces });
+      calib.wordIndex++;
+      calib.wordBuffer = ''; calib.wordStart = performance.now(); calib.wordBackspaces = 0;
+      if(calib.wordIndex < CALIB_WORDS.length) renderCalibBanner();
+      else finishCalibWords();
+    }
+  }
+  function calibBackspace(){
+    if(!calib.wordBuffer.length) return;
+    calib.wordBuffer = calib.wordBuffer.slice(0,-1);
+    calib.wordBackspaces++;
+    renderCalibBanner();
+  }
+  function finishCalibWords(){
+    el.calibration.classList.remove('banner-only');
+    var times = calib.targetResults.map(function(r){ return r.timeToEnterMs; }).sort(function(a,b){ return a-b; });
+    var median = times[Math.floor(times.length/2)] || 700;
+    var baseline = Math.min(1100, Math.max(450, Math.round(median)));
+    var avgWordTime = Math.round(calib.wordResults.reduce(function(s,r){ return s+r.timeMs; },0) / calib.wordResults.length);
+    var totalBksp = calib.wordResults.reduce(function(s,r){ return s+r.backspaces; },0);
+    el.calibration.innerHTML =
+      '<div class="calib-card"><h2>Calibration complete</h2>' +
+      '<div class="calib-summary">' +
+      '<div><span>Median target reach time</span><b>' + median + ' ms</b></div>' +
+      '<div><span>Avg. time per word</span><b>' + avgWordTime + ' ms</b></div>' +
+      '<div><span>Backspaces while spelling</span><b>' + totalBksp + '</b></div>' +
+      '<div><span>Starting dwell time</span><b>' + baseline + ' ms</b></div>' +
+      '</div>' +
+      '<button class="primary-btn" id="calibDone">Start typing</button></div>';
+    document.getElementById('calibDone').addEventListener('click', function(){ endCalibration(baseline); });
+  }
+
+  el.recalibrateBtn.addEventListener('click', function(){ closeSettings(); startCalibration(); });
+  el.calibHint.hidden = hasCalibration();
+
+  /* ============================================================
+     Auth gate wiring — tabs, form submits, sign out.
+     ============================================================ */
+  el.platformSignInBtn.addEventListener('click', attemptPlatformSignIn);
+  el.tabSignIn.addEventListener('click', function(){
+    el.tabSignIn.classList.add('active'); el.tabCreate.classList.remove('active');
+    el.signInForm.hidden = false; el.createForm.hidden = true;
+    clearAuthError();
+  });
+  el.tabCreate.addEventListener('click', function(){
+    el.tabCreate.classList.add('active'); el.tabSignIn.classList.remove('active');
+    el.createForm.hidden = false; el.signInForm.hidden = true;
+    clearAuthError();
+  });
+  el.signInForm.addEventListener('submit', function(e){
+    e.preventDefault();
+    clearAuthError();
+    attemptSignIn(el.signInUsername.value, el.signInPassword.value);
+  });
+  el.createForm.addEventListener('submit', function(e){
+    e.preventDefault();
+    clearAuthError();
+    attemptCreateAccount(el.createUsername.value, el.createPassword.value, el.createConfirm.value);
+  });
+  el.signOutBtn.addEventListener('click', signOut);
+
+  /* ============================================================
+     Init
+     ============================================================ */
+  syncSettingsUI();
+  updateGridShape();
+  rebuildLayouts();
+  renderKeyboard();
+  renderOutput();
+  applyPredictions();
+  renderFavorites();
+  updateStarButton();
+  el.signInUsername.value = '';
+  platformIdentityReady = initPlatformIdentity();
+  window.addEventListener('beforeunload', function(){
+    if(!currentProfile) return;
+    recordSessionMetrics();
+    persistProfileData();
+  });
+})();
+</script>

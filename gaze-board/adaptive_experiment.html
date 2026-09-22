@@ -1,0 +1,31 @@
+<title>Adaptive Experiment</title>
+<pre id="output" style="font-size:2rem; padding:24px; font-family:monospace;"></pre>
+<script>
+  var backspaceRate = 0.0;      // fraction of recent keystrokes that were backspaces (0.0 - 1.0)
+  var avgLettersPer10s = 0.0;   // typing speed: letters typed in the last 10 seconds
+  var dwellTime = 0.7;          // current dwell time (700 milliseconds, as seconds)
+  var travelTime = 0.3;         // time spent moving gaze/eyes between targets - real overhead
+                                 // a real person can never eliminate, so the achievable-speed
+                                 // ceiling must include it, not just dwellTime alone
+
+  function adaptiveAlgorithm(backspaceRate, avgLettersPer10s, dwellTime, travelTime, minDwell, maxDwell, maxStep) {
+    minDwell = minDwell || 0.35;
+    maxDwell = maxDwell || 1.4;
+    maxStep = maxStep || 0.06;
+    var maxAchievable = 10 / (dwellTime + travelTime);
+    var utilization = Math.min(1, avgLettersPer10s / maxAchievable);
+    var performanceScore = Math.max(0, Math.min(1, utilization - backspaceRate));
+    var idealDwell = maxDwell - performanceScore * (maxDwell - minDwell);
+    var step = Math.max(-maxStep, Math.min(maxStep, idealDwell - dwellTime));
+    return dwellTime + step;
+  }
+
+  function tick() {
+    dwellTime = adaptiveAlgorithm(backspaceRate, avgLettersPer10s, dwellTime, travelTime);
+    console.log(dwellTime);
+    document.getElementById('output').textContent = dwellTime;
+  }
+
+  tick();
+  setInterval(tick, 10000);
+</script>

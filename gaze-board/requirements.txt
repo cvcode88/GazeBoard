@@ -1,0 +1,4 @@
+pygame
+english_words
+wordfreq
+pyttsx3
