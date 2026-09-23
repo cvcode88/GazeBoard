@@ -1262,6 +1262,13 @@
     el.signInUsername.value = ''; el.signInPassword.value = '';
     el.createUsername.value = ''; el.createPassword.value = ''; el.createConfirm.value = '';
     clearAuthError();
+    // Hard guarantee, independent of whatever a loaded profile's saved
+    // gazeIndicator setting says: nothing camera/gaze-related may ever
+    // be running, visible, or in the way while signed out - the sign-in
+    // form always wins.
+    stopRealGazeTracking();
+    stopDevGazeSim();
+    if(el.gazeCalibOverlay) el.gazeCalibOverlay.hidden = true;
     el.authGate.hidden = false;
     el.signInUsername.focus();
   }
