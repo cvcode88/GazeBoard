@@ -680,11 +680,11 @@
   <div class="gaze-calib-overlay" id="gazeCalibOverlay" hidden>
     <div class="gaze-calib-setup" id="gazeCalibSetup">
       <h2>Calibrate real eye tracking</h2>
-      <p>Look at a grid of dots, one at a time, and hold still on each - fully hands-free, no clicking. It sweeps the whole grid several times (more rounds, spread evenly, work better than fewer long stares - see the hint text in the Dev tab if you're curious why), then finishes with the dot smoothly gliding into the corners and wandering around, which a fixed grid never reaches on its own.</p>
+      <p>Look at a grid of dots, one at a time, and hold still on each - fully hands-free, no clicking. It sweeps the whole grid several times (more rounds, spread evenly, work better than fewer long stares - see the hint text in the Dev tab if you're curious why), then finishes with the dot smoothly gliding side to side and then up and down into the corners - covering ground a fixed grid never reaches - and a longer free-roam stretch wandering the whole screen at varying speeds.</p>
       <div class="radio-group">
-        <label><input type="radio" name="gazeCalibGrid" value="3"> Quick — 3&times;3 grid (~2.5 min total)</label>
-        <label><input type="radio" name="gazeCalibGrid" value="5" checked> Standard — 5&times;5 grid (~3 min total)</label>
-        <label><input type="radio" name="gazeCalibGrid" value="7"> Thorough — 7&times;7 grid (~4 min total)</label>
+        <label><input type="radio" name="gazeCalibGrid" value="3"> Quick — 3&times;3 grid (~3.5 min total)</label>
+        <label><input type="radio" name="gazeCalibGrid" value="5" checked> Standard — 5&times;5 grid (~4 min total)</label>
+        <label><input type="radio" name="gazeCalibGrid" value="7"> Thorough — 7&times;7 grid (~5 min total)</label>
       </div>
       <div class="gaze-calib-setup-actions">
         <button type="button" class="primary-btn" id="gazeCalibStartBtn">Start calibration</button>
@@ -1796,7 +1796,65 @@
      instead of one mined from a huge corpus. Dictionary-frequency
      completion below is always the fallback when the previous word
      isn't in here, or doesn't suggest enough matches on its own.
+
+     A plain bigram only ever looks at the SINGLE immediately-preceding
+     word, though, and that word is very often a stopword ("the", "a",
+     "my"...) that can't actually disambiguate anything: "i pet the d-"
+     and "i open the d-" both have "the" as their previous word, but
+     the reasonable completion is "dog" for one and "door" for the
+     other. CONTEXT_ASSOCIATIONS fixes exactly that - it's keyed on the
+     nearest CONTENT word before the blank (skipping stopwords while
+     scanning backward), so "pet" - two words back - is what actually
+     drives the guess, the same way a person reading "i pet the d-"
+     would use "pet" to disambiguate, not "the". Checked before the
+     bigram table and dictionary fallback, for both the suggestion
+     chips and the single-best ghost-text guess.
      ============================================================ */
+  var CONTEXT_STOPWORDS = {
+    i:1, you:1, he:1, she:1, it:1, we:1, they:1, a:1, an:1, the:1,
+    my:1, your:1, his:1, her:1, our:1, their:1, to:1, is:1, was:1,
+    am:1, are:1, be:1, been:1, being:1, and:1, but:1, or:1, so:1,
+    of:1, in:1, on:1, at:1, for:1, with:1, from:1, not:1, do:1, does:1, did:1
+  };
+  var CONTEXT_ASSOCIATIONS = {
+    pet: ['dog','cat','puppy','kitten','rabbit'],
+    walk: ['dog','outside','home'],
+    feed: ['dog','cat','baby','fish'],
+    drink: ['water','juice','milk','soda','coffee'],
+    eat: ['food','breakfast','lunch','dinner','snack','apple','sandwich'],
+    drive: ['car','truck','home'],
+    ride: ['bike','car','bus'],
+    watch: ['tv','movie','show'],
+    read: ['book','story'],
+    wash: ['hands','face','dishes','hair'],
+    brush: ['teeth','hair'],
+    open: ['door','window'],
+    close: ['door','window'],
+    turn: ['light','tv','music'],
+    wear: ['shirt','coat','shoes','jacket'],
+    play: ['game','music','outside','ball'],
+    take: ['medicine','break','nap','shower'],
+    use: ['bathroom','phone','computer'],
+    call: ['mom','dad','doctor'],
+    hug: ['mom','dad','dog'],
+    pour: ['water','juice','milk'],
+    wave: ['hello','goodbye'],
+    need: ['help','water','bathroom','break','medicine','rest'],
+    want: ['water','food','help','break','more','out'],
+    feel: ['sick','tired','happy','sad','hungry','thirsty','cold','hot','dizzy'],
+    smell: ['food','flower','smoke'],
+    hear: ['music','noise'],
+    see: ['dog','cat','movie','doctor']
+  };
+  function nearestContextWord(){
+    var before = buffer.slice(0, buffer.length - currentWord().length);
+    var words = before.trim().split(/[^a-zA-Z]+/).filter(Boolean);
+    for(var i=words.length-1; i>=0; i--){
+      var w = words[i].toLowerCase();
+      if(!CONTEXT_STOPWORDS[w]) return w;
+    }
+    return '';
+  }
   var COMMON_BIGRAMS = {
     'i':['am','need','want','have','would','think','can','like','was','feel','love','know','will','could'],
     'you':['are','can','have','need','want','know','should','could','will','would','like'],
@@ -1861,8 +1919,17 @@
   function getWordSuggestions(word){
     var prefix = word.toLowerCase();
     if(!prefix) return [];
-    var prev = previousWord();
-    var out = (COMMON_BIGRAMS[prev] || []).filter(function(w){ return w.length > prefix.length && w.indexOf(prefix) === 0; }).slice(0,6);
+    var out = [];
+    function addMatches(list){
+      (list || []).forEach(function(w){
+        if(out.length < 6 && w.length > prefix.length && w.indexOf(prefix) === 0 && out.indexOf(w) === -1) out.push(w);
+      });
+    }
+    // Nearest-content-word associations first - the fix for "pet the
+    // d-" suggesting "dog" instead of "door" (see CONTEXT_ASSOCIATIONS
+    // above for why the immediately-previous word alone can't do this).
+    addMatches(CONTEXT_ASSOCIATIONS[nearestContextWord()]);
+    addMatches(COMMON_BIGRAMS[previousWord()]);
     for(var i=0; i<FULL_DICTIONARY.length && out.length<6; i++){
       if(FULL_DICTIONARY[i].length > prefix.length && FULL_DICTIONARY[i].slice(0,prefix.length) === prefix && out.indexOf(FULL_DICTIONARY[i]) === -1) out.push(FULL_DICTIONARY[i]);
     }
@@ -1994,6 +2061,8 @@
       var suggestions = getWordSuggestions(word);
       return suggestions.length ? suggestions[0].slice(word.length) : '';
     }
+    var contextMatches = CONTEXT_ASSOCIATIONS[nearestContextWord()];
+    if(contextMatches && contextMatches.length) return contextMatches[0];
     var prev = previousWord();
     if(!prev) return '';
     var nexts = COMMON_BIGRAMS[prev];
@@ -2335,6 +2404,17 @@
      hint text in the Dev tab for the model in plain language.
      ============================================================ */
   var devMouseX = 0, devMouseY = 0, devPrevX = 0, devPrevY = 0, devConfidence = 1, devAnimId = null, devWobbleT = 0, devAngle = 0;
+  // Real gaze predictions arrive noisy frame to frame even after
+  // WebGazer's own internal smoothing - rendering/hit-testing the raw
+  // value directly made the blob visibly dance around a key instead of
+  // settling on it. realSmoothX/Y chase the raw devMouseX/Y with an
+  // exponential moving average each animation frame instead of jumping
+  // straight to them - a standard low-pass filter for a noisy pointer.
+  // Lower REAL_GAZE_SMOOTHING = calmer but more sluggish to respond;
+  // higher = snappier but jumpier. null means "not started yet" so the
+  // very first real sample snaps to position instead of easing in from 0,0.
+  var REAL_GAZE_SMOOTHING = 0.18;
+  var realSmoothX = null, realSmoothY = null;
   document.addEventListener('mousemove', function(e){
     // Real tracking owns devMouseX/Y from the webcam gaze listener below -
     // the mouse must not fight it for control of the same two variables.
@@ -2474,24 +2554,34 @@
     el.gazeDot.hidden = true;
     el.gazeBlob.hidden = false;
     devPrevX = devMouseX; devPrevY = devMouseY; devConfidence = 1; devWobbleT = 0; devAngle = 0;
+    realSmoothX = null; realSmoothY = null; // don't carry a stale smoothed position in from a previous run
     (function frame(){
       var real = settings.gazeIndicator === 'real';
-      var dx = devMouseX-devPrevX, dy = devMouseY-devPrevY;
-      var speed = Math.hypot(dx, dy);
-      devPrevX = devMouseX; devPrevY = devMouseY;
-      if(speed > 0.6) devAngle = Math.atan2(dy, dx); // hold last heading while still, instead of snapping to 0
-      var blobX, blobY, size;
+      var blobX, blobY, size, dx, dy, speed;
       if(real){
-        // Real tracker: devMouseX/Y are WebGazer's own screen-space gaze
-        // prediction (set by onRealGazeData below) - already noisy on its
-        // own, so no synthetic jitter gets layered on top of it. Confidence
-        // comes from how tightly the last dozen real predictions cluster
-        // together, not a speed heuristic - the genuine analog of the
-        // simulated blob's speed-based confidence guess.
+        // Ease toward the latest raw prediction instead of snapping to
+        // it - this is what actually calms the jumpiness down; devMouseX/Y
+        // themselves stay the true raw values so realConfidenceTarget()
+        // still measures the RAW signal's real jitter, not an
+        // artificially smoothed one.
+        if(realSmoothX === null){ realSmoothX = devMouseX; realSmoothY = devMouseY; }
+        realSmoothX += (devMouseX-realSmoothX) * REAL_GAZE_SMOOTHING;
+        realSmoothY += (devMouseY-realSmoothY) * REAL_GAZE_SMOOTHING;
+        dx = realSmoothX-devPrevX; dy = realSmoothY-devPrevY;
+        speed = Math.hypot(dx, dy);
+        devPrevX = realSmoothX; devPrevY = realSmoothY;
+        if(speed > 0.6) devAngle = Math.atan2(dy, dx); // hold last heading while still, instead of snapping to 0
+        // Confidence comes from how tightly the last dozen RAW
+        // predictions cluster together, not a speed heuristic - the
+        // genuine analog of the simulated blob's speed-based guess.
         devConfidence += (realConfidenceTarget()-devConfidence) * 0.15;
-        blobX = devMouseX; blobY = devMouseY;
+        blobX = realSmoothX; blobY = realSmoothY;
         size = Math.min(560, 90 + (1-devConfidence)*260);
       }else{
+        dx = devMouseX-devPrevX; dy = devMouseY-devPrevY;
+        speed = Math.hypot(dx, dy);
+        devPrevX = devMouseX; devPrevY = devMouseY;
+        if(speed > 0.6) devAngle = Math.atan2(dy, dx);
         var target = Math.max(0.12, 1 - Math.min(1, speed/40));
         devConfidence += (target-devConfidence) * 0.15;
         var floorPx = webcamErrorFloorPx();
@@ -2789,27 +2879,44 @@
      samples, so one complete sweep's own samples span the WHOLE
      screen evenly by the time it finishes - not just wherever it
      happened to end. ---------- */
-  var GAZE_CALIB_SNAKE_ROWS = 6;
-  var GAZE_CALIB_SNAKE_SWEEPS = 2;
+  var GAZE_CALIB_SNAKE_LANES = 6;
+  var GAZE_CALIB_SNAKE_SWEEPS_PER_ORIENTATION = 2; // 2 horizontal passes, then 2 vertical passes
+  var GAZE_CALIB_SNAKE_TOTAL_SWEEPS = GAZE_CALIB_SNAKE_SWEEPS_PER_ORIENTATION * 2;
   var GAZE_CALIB_SNAKE_SWEEP_MS = 24000;   // one full corner-to-corner sweep
   var GAZE_CALIB_SNAKE_SAMPLE_MS = 500;    // ~48 samples/sweep - under the 50-sample buffer
-  var GAZE_CALIB_RANDOM_MS = 22000;
+  var GAZE_CALIB_RANDOM_MS = 45000;         // 30s-1min free-roam, per request
   var GAZE_CALIB_RANDOM_SAMPLE_MS = 500;
-  var GAZE_CALIB_RANDOM_WAYPOINT_MS = 2200;
-  function snakePathAt(t){
-    var rows = GAZE_CALIB_SNAKE_ROWS;
-    var rowFloat = Math.min(rows - 1e-6, t*rows);
-    var row = Math.floor(rowFloat);
-    var withinRow = rowFloat - row;
-    var y = rows === 1 ? 0.5 : row/(rows-1);
-    var goingRight = (row % 2 === 0);
-    var x = goingRight ? withinRow : (1-withinRow);
-    return [x, y];
+  var GAZE_CALIB_RANDOM_WAYPOINT_MIN_MS = 700;   // fast dart between points...
+  var GAZE_CALIB_RANDOM_WAYPOINT_MAX_MS = 3400;  // ...to a slow, lingering drift - varies every waypoint
+  // vertical=false: horizontal lanes (rows), sweeping left-right, stepping
+  // down between rows - the original pattern. vertical=true: the exact
+  // same lane logic with the two axes swapped - vertical lanes (columns),
+  // sweeping up-down, stepping across between columns. Doing both means
+  // calibration data comes from horizontal AND vertical eye movement,
+  // not just one axis of motion.
+  function snakePathAt(t, vertical){
+    var lanes = GAZE_CALIB_SNAKE_LANES;
+    var laneFloat = Math.min(lanes - 1e-6, t*lanes);
+    var lane = Math.floor(laneFloat);
+    var within = laneFloat - lane;
+    var across = lanes === 1 ? 0.5 : lane/(lanes-1);   // position along the fixed axis (which row/column)
+    var goingForward = (lane % 2 === 0);
+    var along = goingForward ? within : (1-within);    // position sweeping along the lane itself
+    return vertical ? [across, along] : [along, across];
+  }
+  function gazeCalibSweepIsVertical(sweepIndex){
+    return Math.floor(sweepIndex / GAZE_CALIB_SNAKE_SWEEPS_PER_ORIENTATION) % 2 === 1;
+  }
+  function setGazeCalibSweepLabel(){
+    var vertical = gazeCalibSweepIsVertical(gazeCalibState.sweep);
+    if(el.gazeCalibProgress){
+      el.gazeCalibProgress.textContent = 'Edge sweep ' + (gazeCalibState.sweep+1) + ' / ' + GAZE_CALIB_SNAKE_TOTAL_SWEEPS + (vertical ? ' (vertical)' : ' (horizontal)');
+    }
   }
   function startSnakePhase(){
-    setGazeCalibInstruction('Now follow the dot smoothly with just your eyes as it glides across the screen - including right into the corners, where it\'ll look half cut off on purpose. That\'s exactly the part a fixed grid of dots never reaches.');
+    setGazeCalibInstruction('Now follow the dot smoothly with just your eyes as it glides across the screen - including right into the corners, where it\'ll look half cut off on purpose. That\'s exactly the part a fixed grid of dots never reaches. It sweeps side to side first, then up and down.');
     gazeCalibState = { phase:'snake', sweep:0, startedAt: performance.now(), lastSampleAt: 0 };
-    if(el.gazeCalibProgress) el.gazeCalibProgress.textContent = 'Edge sweep 1 / ' + GAZE_CALIB_SNAKE_SWEEPS;
+    setGazeCalibSweepLabel();
     // Both continuous phases update left/top every animation frame -
     // the grid phase's CSS slide transition would smear/lag badly
     // here instead of tracking crisply, so it's switched off for the
@@ -2822,7 +2929,7 @@
   function snakePhaseFrame(now){
     if(!gazeCalibState || gazeCalibState.phase !== 'snake') return;
     var t = Math.min(1, (now-gazeCalibState.startedAt)/GAZE_CALIB_SNAKE_SWEEP_MS);
-    var pos = snakePathAt(t);
+    var pos = snakePathAt(t, gazeCalibSweepIsVertical(gazeCalibState.sweep));
     placeGazeCalibDotFrac(pos[0], pos[1]);
     el.gazeCalibDot.style.setProperty('--fill', t);
     if(now - gazeCalibState.lastSampleAt >= GAZE_CALIB_SNAKE_SAMPLE_MS){
@@ -2833,20 +2940,24 @@
     }
     if(t >= 1){
       gazeCalibState.sweep++;
-      if(gazeCalibState.sweep >= GAZE_CALIB_SNAKE_SWEEPS){ startRandomPhase(); return; }
+      if(gazeCalibState.sweep >= GAZE_CALIB_SNAKE_TOTAL_SWEEPS){ startRandomPhase(); return; }
       gazeCalibState.startedAt = now;
-      if(el.gazeCalibProgress) el.gazeCalibProgress.textContent = 'Edge sweep ' + (gazeCalibState.sweep+1) + ' / ' + GAZE_CALIB_SNAKE_SWEEPS;
+      setGazeCalibSweepLabel();
     }
     gazeCalibAnimId = requestAnimationFrame(snakePhaseFrame);
   }
   function pickGazeCalibWaypoint(state, now){
-    state.from = state.to || snakePathAt(1);
+    state.from = state.to || snakePathAt(1, true);
     state.to = [Math.random(), Math.random()];
     state.waypointStart = now;
+    // A different duration every waypoint - sometimes a quick dart,
+    // sometimes a slow drift - so the dot moves "at different speeds",
+    // not one constant pace, across the whole free-roam phase.
+    state.waypointDuration = GAZE_CALIB_RANDOM_WAYPOINT_MIN_MS + Math.random()*(GAZE_CALIB_RANDOM_WAYPOINT_MAX_MS-GAZE_CALIB_RANDOM_WAYPOINT_MIN_MS);
   }
   function startRandomPhase(){
-    setGazeCalibInstruction('Almost done - just keep following the dot as it wanders around on its own.');
-    gazeCalibState = { phase:'random', startedAt: performance.now(), lastSampleAt: 0, from:null, to:null, waypointStart:0 };
+    setGazeCalibInstruction('Almost done - just keep following the dot as it wanders around on its own, speeding up and slowing down.');
+    gazeCalibState = { phase:'random', startedAt: performance.now(), lastSampleAt: 0, from:null, to:null, waypointStart:0, waypointDuration:0 };
     pickGazeCalibWaypoint(gazeCalibState, performance.now());
     if(el.gazeCalibProgress) el.gazeCalibProgress.textContent = 'Free-roam calibration…';
     gazeCalibAnimId = requestAnimationFrame(randomPhaseFrame);
@@ -2855,7 +2966,7 @@
     if(!gazeCalibState || gazeCalibState.phase !== 'random') return;
     var totalElapsed = now - gazeCalibState.startedAt;
     if(totalElapsed >= GAZE_CALIB_RANDOM_MS){ endGazeCalibration(true); return; }
-    var wp = Math.min(1, (now-gazeCalibState.waypointStart)/GAZE_CALIB_RANDOM_WAYPOINT_MS);
+    var wp = Math.min(1, (now-gazeCalibState.waypointStart)/gazeCalibState.waypointDuration);
     var ease = wp < 0.5 ? 2*wp*wp : 1-Math.pow(-2*wp+2,2)/2; // ease-in-out, organic drifting rather than linear
     var fx = gazeCalibState.from[0] + (gazeCalibState.to[0]-gazeCalibState.from[0])*ease;
     var fy = gazeCalibState.from[1] + (gazeCalibState.to[1]-gazeCalibState.from[1])*ease;

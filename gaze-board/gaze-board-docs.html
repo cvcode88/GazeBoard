@@ -1,0 +1,463 @@
+<title>Gaze Board Field Notes</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap');
+
+  :root{
+    --bg:#F6F8F7; --panel:#FFFFFF; --panel-2:#EEF2F1; --border:#D9E0DE;
+    --text:#182220; --muted:#5B6B68; --muted-2:#7C8B88;
+    --accent:#1F7A8C; --accent-strong:#155D6C; --accent-rgb:31,122,140;
+    --amber:#C97A1F; --amber-rgb:201,122,31;
+    --danger:#B3452F; --good:#3F7D4A;
+    --code-bg:#0F1B1D; --code-text:#DCE9E7; --code-muted:#7FA6A0;
+    --shadow: 0 8px 24px rgba(10,30,28,.08);
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#10171A; --panel:#161F22; --panel-2:#1D2A2D; --border:#2A3A3D;
+      --text:#E7EEEC; --muted:#9BB0AC; --muted-2:#7C918D;
+      --accent:#5BC3D6; --accent-strong:#8AD8E5; --accent-rgb:91,195,214;
+      --amber:#E4A24B; --amber-rgb:228,162,75;
+      --danger:#E38A73; --good:#7BC98A;
+      --code-bg:#0A1213; --code-text:#D7E7E4; --code-muted:#6F9C96;
+      --shadow: 0 8px 28px rgba(0,0,0,.45);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#10171A; --panel:#161F22; --panel-2:#1D2A2D; --border:#2A3A3D;
+    --text:#E7EEEC; --muted:#9BB0AC; --muted-2:#7C918D;
+    --accent:#5BC3D6; --accent-strong:#8AD8E5; --accent-rgb:91,195,214;
+    --amber:#E4A24B; --amber-rgb:228,162,75;
+    --danger:#E38A73; --good:#7BC98A;
+    --code-bg:#0A1213; --code-text:#D7E7E4; --code-muted:#6F9C96;
+    --shadow: 0 8px 28px rgba(0,0,0,.45);
+  }
+
+  *{ box-sizing:border-box; }
+  body{ background:var(--bg); color:var(--text); font-family:"Public Sans",-apple-system,Segoe UI,sans-serif; line-height:1.6; }
+  h1,h2,h3,h4{ font-family:"Public Sans",sans-serif; font-weight:700; text-wrap:balance; color:var(--text); }
+  a{ color:var(--accent); }
+  code, pre, .mono{ font-family:"JetBrains Mono",monospace; }
+  ::selection{ background:rgba(var(--accent-rgb),.28); }
+
+  .shell{ display:flex; min-height:100vh; }
+
+  /* ---------- sidebar ---------- */
+  .sidebar{
+    width:270px; flex:0 0 270px; background:var(--panel); border-right:1px solid var(--border);
+    padding:22px 14px; position:sticky; top:0; height:100vh; overflow-y:auto;
+  }
+  .brand{ display:flex; align-items:center; gap:10px; padding:4px 10px 18px; }
+  .brand-mark{ font-size:1.5rem; }
+  .brand-text b{ display:block; font-size:1rem; }
+  .brand-text span{ display:block; font-size:.72rem; color:var(--muted); }
+  .nav-group{ margin-bottom:6px; }
+  .nav-group-label{
+    font-size:.68rem; font-weight:700; text-transform:uppercase; letter-spacing:.08em;
+    color:var(--muted-2); padding:14px 10px 6px;
+  }
+  .nav-item{
+    display:flex; align-items:center; gap:9px; width:100%; text-align:left; padding:8px 10px;
+    border-radius:8px; border:none; background:none; color:var(--muted); font-size:.86rem;
+    font-family:inherit; cursor:pointer;
+  }
+  .nav-item:hover{ background:var(--panel-2); color:var(--text); }
+  .nav-item.active{ background:rgba(var(--accent-rgb),.14); color:var(--accent-strong); font-weight:600; }
+  .nav-icon{ width:1.1em; text-align:center; }
+
+  /* ---------- main content ---------- */
+  .main{ flex:1; min-width:0; padding:44px 48px 90px; max-width:900px; }
+  .section{ display:none; }
+  .section.active{ display:block; animation:fade .25s ease; }
+  @keyframes fade{ from{ opacity:0; transform:translateY(4px);} to{ opacity:1; transform:none; } }
+  .eyebrow{ font-size:.74rem; font-weight:700; letter-spacing:.09em; text-transform:uppercase; color:var(--accent); margin-bottom:8px; }
+  .section h1{ font-size:1.9rem; margin:0 0 6px; }
+  .section .dek{ color:var(--muted); font-size:1.02rem; max-width:62ch; margin-bottom:30px; }
+  .section h2{ font-size:1.28rem; margin:38px 0 12px; padding-top:6px; }
+  .section h2:first-of-type{ margin-top:0; }
+  .section h3{ font-size:1.02rem; margin:24px 0 8px; color:var(--text); }
+  .section p{ max-width:68ch; margin:0 0 14px; }
+  .section ul, .section ol{ max-width:66ch; margin:0 0 14px; padding-left:22px; }
+  .section li{ margin-bottom:6px; }
+  .section strong{ color:var(--text); }
+
+  .card{ background:var(--panel); border:1px solid var(--border); border-radius:14px; padding:20px 22px; margin:18px 0; box-shadow:var(--shadow); }
+  .card h3{ margin-top:0; }
+
+  .callout{ border-left:3px solid var(--amber); background:rgba(var(--amber-rgb),.08); border-radius:0 10px 10px 0; padding:14px 18px; margin:18px 0; max-width:66ch; }
+  .callout .tag{ font-size:.7rem; font-weight:800; letter-spacing:.08em; text-transform:uppercase; color:var(--amber); display:block; margin-bottom:6px; }
+  .callout.good{ border-color:var(--good); }
+  .callout.good .tag{ color:var(--good); }
+  .callout.bad{ border-color:var(--danger); }
+  .callout.bad .tag{ color:var(--danger); }
+
+  pre.code{
+    background:var(--code-bg); color:var(--code-text); border-radius:10px; padding:16px 18px;
+    overflow-x:auto; font-size:.82rem; line-height:1.55; margin:14px 0; max-width:100%;
+  }
+  pre.code .c{ color:var(--code-muted); font-style:italic; }
+  code.inline{ background:var(--panel-2); border:1px solid var(--border); border-radius:5px; padding:1px 6px; font-size:.86em; }
+
+  table.ref{ width:100%; border-collapse:collapse; margin:16px 0; font-size:.88rem; }
+  table.ref th, table.ref td{ text-align:left; padding:8px 12px; border-bottom:1px solid var(--border); vertical-align:top; }
+  table.ref th{ color:var(--muted); font-size:.72rem; text-transform:uppercase; letter-spacing:.05em; font-weight:700; }
+  table.ref td.num, table.ref td.mono{ font-family:"JetBrains Mono",monospace; font-size:.84rem; }
+  .pill{ display:inline-block; padding:2px 9px; border-radius:999px; font-size:.72rem; font-weight:700; }
+  .pill.yes{ background:rgba(63,125,74,.15); color:var(--good); }
+  .pill.no{ background:rgba(179,69,47,.15); color:var(--danger); }
+  .pill.maybe{ background:rgba(var(--amber-rgb),.15); color:var(--amber); }
+
+  .arch-grid{ display:grid; grid-template-columns:repeat(2,1fr); gap:14px; margin:18px 0; }
+  @media (max-width:640px){ .arch-grid{ grid-template-columns:1fr; } }
+  .arch-card{ background:var(--panel-2); border:1px solid var(--border); border-radius:12px; padding:16px 18px; }
+  .arch-card b{ display:block; margin-bottom:4px; }
+  .arch-card span{ color:var(--muted); font-size:.85rem; }
+
+  .mermaid{ background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:18px; margin:20px 0; }
+
+  .footline{ margin-top:60px; padding-top:20px; border-top:1px solid var(--border); color:var(--muted-2); font-size:.82rem; }
+
+  ::-webkit-scrollbar{ width:10px; height:10px; }
+  ::-webkit-scrollbar-thumb{ background:var(--border); border-radius:6px; }
+</style>
+
+<div class="shell">
+  <nav class="sidebar" id="sidebar">
+    <div class="brand">
+      <span class="brand-mark">&#128065;</span>
+      <span class="brand-text"><b>Gaze Board</b><span>Field notes &amp; internals</span></span>
+    </div>
+
+    <div class="nav-group">
+      <div class="nav-group-label">Start here</div>
+      <button class="nav-item" data-target="overview"><span class="nav-icon">&#9673;</span>Overview</button>
+      <button class="nav-item" data-target="keyboard"><span class="nav-icon">&#8963;</span>Keyboard &amp; selection</button>
+    </div>
+
+    <div class="nav-group">
+      <div class="nav-group-label">Intelligence</div>
+      <button class="nav-item" data-target="prediction"><span class="nav-icon">&#9998;</span>Predictive text</button>
+      <button class="nav-item" data-target="calibration"><span class="nav-icon">&#8982;</span>Calibration</button>
+    </div>
+
+    <div class="nav-group">
+      <div class="nav-group-label">Eye tracking</div>
+      <button class="nav-item" data-target="webgazer"><span class="nav-icon">&#128249;</span>Real webcam (WebGazer)</button>
+      <button class="nav-item" data-target="devtools"><span class="nav-icon">&#9881;</span>Dev tools &amp; simulation</button>
+    </div>
+
+    <div class="nav-group">
+      <div class="nav-group-label">Platform</div>
+      <button class="nav-item" data-target="accounts"><span class="nav-icon">&#128272;</span>Accounts &amp; sync</button>
+      <button class="nav-item" data-target="appearance"><span class="nav-icon">&#9788;</span>Appearance &amp; a11y</button>
+      <button class="nav-item" data-target="stats"><span class="nav-icon">&#128202;</span>Stats &amp; charts</button>
+    </div>
+
+    <div class="nav-group">
+      <div class="nav-group-label">Shipping it</div>
+      <button class="nav-item" data-target="deploy"><span class="nav-icon">&#128640;</span>Deployment</button>
+    </div>
+  </nav>
+
+  <main class="main">
+
+    <!-- OVERVIEW -->
+    <section class="section" id="sec-overview">
+      <div class="eyebrow">Project</div>
+      <h1>Gaze Board</h1>
+      <p class="dek">A cheap, Raspberry-Pi-deployable eye-gaze AAC (augmentative &amp; alternative communication) keyboard — built as a browser prototype first, with a parallel Python/Pygame version aimed at the actual target hardware.</p>
+
+      <h2>Why it exists</h2>
+      <p>Dedicated eye-gaze communication devices are expensive — often thousands of dollars — which puts them out of reach for a lot of people who could benefit from one. Gaze Board's premise: a Raspberry Pi and a normal webcam or Pi camera, running free, open software, can get meaningfully close for a fraction of the cost.</p>
+
+      <h2>Two implementations, one goal</h2>
+      <div class="arch-grid">
+        <div class="arch-card">
+          <b>Browser prototype (this file's subject)</b>
+          <span>A single self-contained HTML/JS/CSS page. Started as a mouse-driven mockup of the interaction model, later grew a genuine real-time webcam eye tracker (WebGazer.js) bolted on. Fast to iterate on, easy to demo from any laptop.</span>
+        </div>
+        <div class="arch-card">
+          <b>Python / Pygame (the real target)</b>
+          <span><code class="inline mono">gaze_board.py</code>, <code class="inline mono">predictor.py</code>, <code class="inline mono">profiles.py</code> — the version meant to actually run on a Raspberry Pi. No browser sandbox restrictions to fight, direct camera access, the intended long-term home for real eye tracking.</span>
+        </div>
+      </div>
+
+      <h2>Core interaction model</h2>
+      <p>Both versions share the same idea: a key (or button) highlights under wherever the person is looking, and gets <strong>selected</strong> one of two ways:</p>
+      <ul>
+        <li><strong>Typing mode (dwell):</strong> hold your gaze on a key for a set amount of time (the dwell time) and it commits automatically. An adaptive-timing system nudges that duration up or down over time based on how often the person overshoots or hesitates.</li>
+        <li><strong>Blink mode (switch):</strong> gaze only highlights; a separate discrete action — a click standing in for a real blink or external switch — confirms the selection. This avoids the classic "Midas touch" problem (accidentally selecting everything you glance at).</li>
+      </ul>
+      <p>Every other system in the project — predictive text, calibration, the real webcam tracker — plugs into this same highlight/commit pipeline rather than reinventing it.</p>
+    </section>
+
+    <!-- KEYBOARD -->
+    <section class="section" id="sec-keyboard">
+      <div class="eyebrow">Interaction</div>
+      <h1>Keyboard &amp; selection</h1>
+      <p class="dek">A layout designed around how often letters are actually used, and a selection model built to tolerate an imprecise pointer.</p>
+
+      <h2>Frequency-optimized layout</h2>
+      <p>Letters aren't arranged QWERTY-style. Each key's position is chosen from real English letter-frequency data (E, T, A, O, I... down to Q, Z), and cells are ranked by distance from the grid's center. The most frequent letters land in the most central, easiest-to-reach cells — the ones a wandering, imprecise gaze estimate is most likely to land on correctly — and key <em>size</em> scales with that same frequency, so common letters are also physically bigger targets.</p>
+      <pre class="code">var LETTER_FREQ = [
+  ['E',12.70],['T',9.06],['A',8.17],['O',7.51],['I',6.97],['N',6.75],
+  ['S',6.33],['H',6.09],['R',5.99], <span class="c">// ...down to Q, Z</span>
+];</pre>
+
+      <h2>Dwell timing + the adaptive AI</h2>
+      <p>Dwell time isn't one fixed number for everyone. A short calibration flow measures how long it takes a specific person to reliably fixate on a target, and that becomes their starting dwell time. From there, an adaptive system watches ongoing behavior — backspace rate, hesitation, overshoot — and nudges the dwell time up (more forgiving) or down (faster typing) automatically over a session.</p>
+
+      <h2>Blink mode</h2>
+      <p>Suggestions, the favorite-star button, and the favorites list are <strong>always</strong> blink-only, regardless of the global typing/blink setting — gaze can rest on them to read without ever accidentally selecting one. Everywhere else, "blink" is simulated with a click, which is also exactly the signal a real external switch would send.</p>
+    </section>
+
+    <!-- PREDICTION -->
+    <section class="section" id="sec-prediction">
+      <div class="eyebrow">Intelligence</div>
+      <h1>Predictive text</h1>
+      <p class="dek">Three layered systems, from cheapest to smartest, so there's always a reasonable guess even when the smarter ones have nothing to say.</p>
+
+      <pre class="mermaid">
+flowchart TD
+    A["Person is typing a word,\nor about to start one"] --> B{"Nearest CONTENT word\nbefore the blank\n(skipping stopwords)\nmatches CONTEXT_ASSOCIATIONS?"}
+    B -- yes --> C["Use that word list first\n('pet' -> dog, cat, puppy...')"]
+    B -- no / not enough --> D{"Immediately previous word\nis in COMMON_BIGRAMS?"}
+    D -- yes --> E["Use that word list\n('the' -> door, water, tv...')"]
+    D -- no / not enough --> F["Fall back to raw dictionary\nfrequency, prefix-matched"]
+    C --> G["Merge, dedupe, cap at 6\nsuggestions - #1 becomes\nthe ghost-text guess"]
+    E --> G
+    F --> G
+      </pre>
+
+      <h2>1. Next-letter highlighting</h2>
+      <p>While a word is being typed, the keyboard highlights which <em>next letters</em> are plausible — not full words, just individual keys — using <code class="inline mono">approxZipf()</code>, a frequency estimate reconstructed straight from a word's rank in a pre-sorted ~235k-word dictionary (most-common-word-first). No server, no live computation over the whole dictionary at runtime beyond a scan for matching prefixes.</p>
+      <pre class="code">function approxZipf(rank){
+  return Math.max(0.8, 7.6 - Math.log2(rank + 2) * 0.85);
+}</pre>
+
+      <h2>2. Bigram-based word suggestions</h2>
+      <p>A hand-picked table of ~60 common words, each mapped to the words most likely to follow it (<code class="inline mono">COMMON_BIGRAMS</code>), several deliberately skewed toward AAC phrasing — <code class="inline mono">need → help</code>, <code class="inline mono">feel → sick/tired/better</code>. This is the same core idea predictive keyboards used before neural language models: rank candidates by how often word B follows word A.</p>
+
+      <h2>3. Context associations — the "pet the dog" fix</h2>
+      <p>A plain bigram only ever looks at the single immediately-preceding word — and that word is very often a stopword that can't disambiguate anything. <strong><code class="inline mono">i pet the d—</code></strong> and <strong><code class="inline mono">i open the d—</code></strong> both have <code class="inline mono">"the"</code> as their previous word, so a pure bigram model treats them identically and just returns whatever <code class="inline mono">COMMON_BIGRAMS['the']</code> happens to list first.</p>
+      <div class="callout bad"><span class="tag">The bug, concretely</span><code class="inline mono">COMMON_BIGRAMS['the']</code> lists <code class="inline mono">door</code> but not <code class="inline mono">dog</code> — so the ghost text confidently suggested "door" after "i pet the d", regardless of context, because "the" alone genuinely can't tell those two sentences apart.</div>
+      <p><code class="inline mono">nearestContextWord()</code> fixes this by scanning backward past stopwords (<code class="inline mono">the, a, my, to, is...</code>) to find the nearest real <strong>content</strong> word — <code class="inline mono">"pet"</code>, two words back — and checking a separate association table keyed on that:</p>
+      <pre class="code">var CONTEXT_ASSOCIATIONS = {
+  pet:   ['dog','cat','puppy','kitten','rabbit'],
+  drink: ['water','juice','milk','soda','coffee'],
+  feel:  ['sick','tired','happy','sad','hungry','thirsty'],
+  need:  ['help','water','bathroom','break','medicine','rest'],
+  <span class="c">// ...</span>
+};
+
+function nearestContextWord(){
+  var before = buffer.slice(0, buffer.length - currentWord().length);
+  var words = before.trim().split(/[^a-zA-Z]+/).filter(Boolean);
+  for (var i = words.length - 1; i &gt;= 0; i--) {
+    var w = words[i].toLowerCase();
+    if (!CONTEXT_STOPWORDS[w]) return w; <span class="c">// skip "the", "a", "to"...</span>
+  }
+  return '';
+}</pre>
+      <p>Checked <em>before</em> the bigram table and the dictionary fallback, for both the suggestion chips and the single best ghost-text guess — so "i pet the d" now genuinely completes to "dog".</p>
+
+      <h2>Ghost text</h2>
+      <p>The greyed-out preview after the cursor. Mid-word, it's the tail end of the best matching suggestion; at the start of a new word, it's a whole predicted word from the context/bigram tables. Accepting it replaces the whole current word (case-normalized) rather than naively appending, which avoids garbage like <code class="inline mono">HELlo</code> when keys commit uppercase but the dictionary is lowercase.</p>
+    </section>
+
+    <!-- CALIBRATION -->
+    <section class="section" id="sec-calibration">
+      <div class="eyebrow">Intelligence</div>
+      <h1>Calibration</h1>
+      <p class="dek">Two entirely different calibrations live in this app, measuring two entirely different things.</p>
+
+      <table class="ref">
+        <tr><th>Calibration</th><th>What it measures</th><th>Feeds into</th></tr>
+        <tr><td><strong>Dwell timing</strong></td><td>How long it takes this person to reliably fixate on a target</td><td>Starting dwell time + the adaptive-timing AI</td></tr>
+        <tr><td><strong>Gaze position (WebGazer)</strong></td><td>How this face/webcam/lighting/seating maps to actual screen coordinates</td><td>WebGazer's own ridge-regression model</td></tr>
+      </table>
+
+      <h2>Gaze-position calibration flow</h2>
+      <p>Fully hands-free by design — no clicking anywhere, since asking a gaze-only user to also click defeats the point. Three phases, run back to back:</p>
+      <ol>
+        <li><strong>Grid sweep</strong> — a user-chosen grid (3×3 quick, 5×5 standard, 7×7 thorough) of fixed points, each one held-gaze-and-capture, run for several full round-robin rounds.</li>
+        <li><strong>Edge sweep</strong> — the dot glides smoothly in a snake pattern from the literal top-left corner (rendered genuinely half-clipped off the viewport, since CSS centers it exactly on the edge) across and down the whole screen, covering true extremes the grid's comfortable margins never reach.</li>
+        <li><strong>Free-roam</strong> — the dot drifts to random points with eased interpolation for ~20 seconds, for a final burst of varied, less-predictable training data.</li>
+      </ol>
+
+      <div class="callout bad">
+        <span class="tag">A real bug found the hard way</span>
+        Early versions calibrated point-by-point, spending many samples on point 1, then point 2, and so on. WebGazer's ridge regression keeps only its <strong>last 50 training samples</strong> — a fixed-size ring buffer, confirmed straight from its source (<code class="inline mono">InitRegression</code> hardcodes <code class="inline mono">var e = 50</code>). Sweeping top-to-bottom meant the buffer, by the end, held almost nothing but the last few (bottom-row) points — so predictions stuck near the bottom of the screen no matter where the person actually looked.
+      </div>
+      <div class="callout good">
+        <span class="tag">The fix</span>
+        Round-robin sampling: sweep every point in the set taking only 1–2 samples each, then loop back and sweep again for more rounds. The buffer's last ~50 samples are then always a fresh, even spread across the <em>whole</em> grid — never just wherever the sweep happened to end.
+      </div>
+
+      <h3>Smooth pursuit — a real technique, not an improvisation</h3>
+      <p>Having a target move continuously while assuming the eyes are tracking it is an established eye-tracking calibration method, not something invented for this project. WebGazer needs the same ground truth either way — a screen position, paired with an eye reading at that instant — a moving point supplies that exactly as well as a held-still one, provided the motion stays slow enough to actually follow.</p>
+    </section>
+
+    <!-- WEBGAZER -->
+    <section class="section" id="sec-webgazer">
+      <div class="eyebrow">Eye tracking</div>
+      <h1>Real webcam tracking</h1>
+      <p class="dek">Genuine, real-time gaze estimation from an ordinary webcam, via <a href="https://webgazer.cs.brown.edu/" target="_blank" rel="noopener">WebGazer.js</a> (Brown University, open source since 2016) — and the platform walls that had to be worked around to get it running at all.</p>
+
+      <h2>How it's wired in</h2>
+      <p>The library loads from jsdelivr as an ordinary <code class="inline mono">&lt;script&gt;</code> tag, resolves a <code class="inline mono">webgazer</code> global, and its gaze-listener callback feeds coordinates into the exact same blob-driven hit-testing system the simulated dev-mode blob already used — so real tracking, once running, drives the whole app (keys, dock buttons, suggestions, favorites) through code that was never rewritten for it.</p>
+
+      <h2>Wall #1 — cross-origin runtime fetches</h2>
+      <p>WebGazer's face-tracking backend (MediaPipe FaceMesh) needs to download WASM binaries and model data <em>after</em> the main script loads. Claude's Artifact sandbox blocks that kind of secondary cross-origin fetch outright — silently, with no visible error — even from the same CDN the script itself came from.</p>
+      <div class="callout good">
+        <span class="tag">The fix</span>
+        WebGazer's default asset path (<code class="inline mono">faceMeshSolutionPath: "./mediapipe/face_mesh"</code>) is <em>relative to the page</em>, not hardcoded to an external host — confirmed by reading WebGazer's actual source. Downloading those ~16&nbsp;MB of model/WASM files once and republishing them as the artifact's <em>own</em> files, at that exact relative path, means the same-origin fetch succeeds where the cross-origin one was blocked. No patching of WebGazer itself required.
+      </div>
+
+      <h2>Wall #2 — camera permission policy</h2>
+      <p>Separately, and unrelated to the fetch issue: Claude's hosting appears to send a Permissions-Policy that blocks camera access for artifact pages outright. The telltale sign was a <code class="inline mono">NotAllowedError</code> with <strong>no permission popup ever appearing</strong> — not even after manually setting the browser's site permission to Allow, which rules out a simple remembered "block" decision and points to the page itself never being allowed to ask.</p>
+      <table class="ref">
+        <tr><th>Hosting</th><th>Camera access</th><th>Notes</th></tr>
+        <tr><td>Claude artifact (embedded or its own tab)</td><td><span class="pill no">Blocked</span></td><td>No permission prompt appears at all; a platform-level restriction, not fixable from inside the page</td></tr>
+        <tr><td>GitHub Pages</td><td><span class="pill yes">Works</span></td><td>Ordinary static hosting, no special restrictions</td></tr>
+        <tr><td>Local server (<code class="inline mono">python -m http.server</code>)</td><td><span class="pill yes">Works</span></td><td>Uses the exact same self-hosted model files, zero setup beyond serving the folder</td></tr>
+        <tr><td>Raspberry Pi, local Chromium</td><td><span class="pill maybe">Expected to work</span></td><td>Same as any local browser context — not yet verified on real Pi hardware</td></tr>
+      </table>
+
+      <h2>Camera error reference</h2>
+      <table class="ref">
+        <tr><th>Error name</th><th>Usually means</th></tr>
+        <tr><td class="mono">NotAllowedError</td><td>Permission denied, <em>or</em> the page/frame isn't allowed to ask at all (the Claude-hosting case)</td></tr>
+        <tr><td class="mono">NotFoundError</td><td>No camera detected on the device</td></tr>
+        <tr><td class="mono">SecurityError</td><td>Page not allowed to use the camera in its current context</td></tr>
+      </table>
+    </section>
+
+    <!-- DEV TOOLS -->
+    <section class="section" id="sec-devtools">
+      <div class="eyebrow">Eye tracking</div>
+      <h1>Dev tools &amp; simulation</h1>
+      <p class="dek">A restricted tab (any signed-in profile, originally two named testers) for testing gaze-driven interaction without needing a working webcam tracker at all.</p>
+
+      <h2>Simulated webcam blob</h2>
+      <p>Replaces the small precise gaze dot with a wandering, imprecise blob that approximates what a real low-cost camera actually outputs — grounded in published research, not guessed:</p>
+      <ul>
+        <li><strong>Error floor:</strong> ~100–340px, pulled from real WebGazer.js/study accuracy figures (sparse-calibration vs. well-lit calibrated conditions). A dedicated IR tracker like the Gazepoint GP3 HD manages ~35–40px — meaningfully tighter, because it's fundamentally different hardware.</li>
+        <li><strong>Confidence coloring:</strong> a genuine two-tone radial gradient — blue at low confidence, orange at high — center pulling toward the "confident" color and edge toward "uncertain", both colorblind-safe since the signal is opacity/position, not hue alone.</li>
+        <li><strong>Shape:</strong> a little taller than wide even at rest (video-based trackers measure vertical gaze less precisely — smaller range of motion, harder to detect), stretching further along the current heading the faster it moves (frame-rate + processing lag blur fast eye movement).</li>
+      </ul>
+
+      <h2>The webcam quality slider</h2>
+      <p>Scales that error floor between a "rough, uncalibrated webcam" and "best-case, calibrated webcam" — both ends are the actual published figures above, not arbitrary slider math.</p>
+
+      <h2>The easter egg</h2>
+      <p>Undocumented anywhere in the UI: favoriting the exact phrase <code class="inline mono">AYDDYKHMMTI</code> toggles a screen-shake + slow rainbow glow effect; unfavoriting turns it off. Deliberately <strong>not</strong> a strobe or flash effect — rapid high-contrast flashing is a documented photosensitive-epilepsy trigger, and this is an accessibility tool. The rainbow glow's full hue cycle takes ~6 seconds, nowhere near the ~3-times-a-second range that's an actual seizure risk.</p>
+    </section>
+
+    <!-- ACCOUNTS -->
+    <section class="section" id="sec-accounts">
+      <div class="eyebrow">Platform</div>
+      <h1>Accounts &amp; sync</h1>
+      <p class="dek">Three layered ways to sign in, from "just this browser" up to "any device, same Claude org."</p>
+
+      <pre class="mermaid">
+flowchart LR
+    A["Sign-in screen"] --> B["Continue with\nClaude account"]
+    A --> C["Username + password"]
+    B --> D["Private per-viewer doc\ndata/users/&lt;id&gt;/profile\n(Claude db capability)"]
+    C --> E{"Shared cloud doc found?\naccounts/&lt;sha256 username&gt;"}
+    E -- yes --> F["Load from cloud,\nmirror future saves back"]
+    E -- no --> G["Fall back to this\nbrowser's localStorage"]
+      </pre>
+
+      <h2>Local accounts (always available)</h2>
+      <p>Username + password, hashed (SHA-256) before ever touching storage, saved to <code class="inline mono">localStorage</code>. Zero server, zero dependency on the hosting platform — works identically on the Claude artifact, GitHub Pages, or a local file. The tradeoff: strictly per-browser.</p>
+
+      <h2>Claude-account sign-in</h2>
+      <p>Uses the Artifact platform's <code class="inline mono">user</code> + <code class="inline mono">db</code> capabilities: <code class="inline mono">user.id()</code> gives an opaque per-organization id, and profile data lives at the private path <code class="inline mono">data/users/&lt;id&gt;/profile</code> — invisible to every other viewer, including the artifact's own owner. No password needed; the Claude sign-in itself is the credential. Only works inside claude.ai, and only reaches other devices signed into the <em>same</em> Claude account.</p>
+
+      <h2>Cross-device username/password sync</h2>
+      <p>The same local username/password flow additionally mirrors to a <em>shared</em> (not private) document at <code class="inline mono">accounts/&lt;sha256 of the username&gt;</code>, so the exact same credentials work from a different device — as long as that device is also signed into a Claude account in the same organization as the artifact's owner. Genuinely different, unrelated Claude accounts/organizations cannot reach each other's data this way; that's a hard platform boundary, not a bug.</p>
+
+      <div class="callout bad">
+        <span class="tag">A real bug found the hard way</span>
+        The platform's <code class="inline mono">db</code> capability hands back <strong>frozen</strong> document objects from <code class="inline mono">.data()</code> — the platform's own contract says to clone before editing. The very first sign-in after loading cloud data would throw <code class="inline mono">TypeError: "x" is read-only</code> the moment anything tried to write a favorite, a setting, or a stat, since that data was being mutated in place. Fixed by deep-cloning (<code class="inline mono">JSON.parse(JSON.stringify(...))</code>) immediately after every cloud read, before it's ever assigned to live state.
+      </div>
+    </section>
+
+    <!-- APPEARANCE -->
+    <section class="section" id="sec-appearance">
+      <div class="eyebrow">Platform</div>
+      <h1>Appearance &amp; accessibility</h1>
+      <p class="dek">Every visual choice here is either a genuine accessibility feature or grounded in real research — nothing is purely decorative.</p>
+
+      <h2>Accent colors &amp; dark mode</h2>
+      <p>Eight accent presets, each with its own light and dark variant, applied as inline CSS custom properties (<code class="inline mono">--accent</code>, <code class="inline mono">--accent-strong</code>, <code class="inline mono">--accent-rgb</code>) on the root element — inline styles always win over stylesheet rules, which is what lets one chosen color follow the person across both themes without fighting the cascade.</p>
+
+      <h2>High contrast</h2>
+      <p>Bumps border and muted-text visibility using the same inline-custom-property technique, independent of light/dark mode.</p>
+
+      <h2>Colorblind-safe confidence color</h2>
+      <p>The default amber confidence color is colorblind-safe on its own merits: confidence is communicated through <em>opacity</em> on a single hue, not by picking between two different hues the way a red/green pair would be — the single most common form of color blindness would still read it fine. A blue alternative is offered regardless, for anyone who finds it easier to parse.</p>
+    </section>
+
+    <!-- STATS -->
+    <section class="section" id="sec-stats">
+      <div class="eyebrow">Platform</div>
+      <h1>Stats &amp; charts</h1>
+      <p class="dek">Session and all-time metrics, plus hand-rolled trend charts — no charting library, just inline SVG.</p>
+
+      <h2>What's tracked</h2>
+      <p>Session: time, characters typed, words completed, current WPM, backspace rate, dwell time. All-time: blends persisted totals with the still-in-progress current session, so the numbers never look like they're ignoring what was just typed.</p>
+
+      <h2>Trend charts</h2>
+      <p>Three sparklines built from the same <code class="inline mono">adaptiveHistory</code> array every session already recorded to (WPM, dwell time, backspace rate) — a small hand-written SVG path generator (<code class="inline mono">buildSparklineSVG</code>) maps each value to its own min/max range and draws a filled line chart, no dependency needed for three thin trend lines.</p>
+    </section>
+
+    <!-- DEPLOY -->
+    <section class="section" id="sec-deploy">
+      <div class="eyebrow">Shipping it</div>
+      <h1>Deployment</h1>
+      <p class="dek">Three ways to run this, in order of how much platform restriction stands between you and a working camera.</p>
+
+      <h3>Claude artifact link</h3>
+      <p>Zero setup, works instantly, best for the localStorage/keyboard/prediction experience — but real webcam tracking is blocked by Claude's own hosting policy (see Real Webcam Tracking).</p>
+
+      <h3>GitHub Pages</h3>
+      <ol>
+        <li>New public repo → <strong>uploading an existing file</strong> → drag in <code class="inline mono">gaze-board.html</code>, <code class="inline mono">dictionary.js</code>, and the whole <code class="inline mono">mediapipe</code> folder (keeping it a folder, not flattened) → commit.</li>
+        <li>Repo <strong>Settings → Pages</strong> → Source: <em>Deploy from a branch</em> → Branch: <code class="inline mono">main</code>, <code class="inline mono">/ (root)</code> → Save.</li>
+        <li>Wait ~1 minute, visit the printed <code class="inline mono">github.io</code> URL + <code class="inline mono">/gaze-board.html</code> (add the extra folder segment if the files ended up nested one level deep).</li>
+      </ol>
+      <p>Every future change needs a fresh upload of the changed file(s) — GitHub Pages does not auto-sync with anything.</p>
+
+      <h3>Local server</h3>
+      <pre class="code">python -m http.server 8000
+<span class="c"># then open http://localhost:8000/gaze-board.html</span></pre>
+      <p>Fastest way to test changes instantly, with full camera access and no upload step — the tradeoff is it only works on the machine actually running the server.</p>
+
+      <h3>Raspberry Pi (the real target)</h3>
+      <p>Two paths: run the Python/Pygame version directly against a Pi camera (no browser sandbox to fight at all), or run this HTML version in the Pi's own local Chromium in kiosk mode — the same "local server, no platform restrictions" reasoning applies on-device as it does on a laptop.</p>
+
+      <div class="footline">Gaze Board — a science-fair eye-gaze AAC keyboard. This page is internal reference documentation, generated alongside the project itself.</div>
+    </section>
+
+  </main>
+</div>
+
+<script>
+  var sections = Array.prototype.slice.call(document.querySelectorAll('.section'));
+  var navItems = Array.prototype.slice.call(document.querySelectorAll('.nav-item'));
+
+  function showSection(id){
+    sections.forEach(function(s){ s.classList.toggle('active', s.id === 'sec-' + id); });
+    navItems.forEach(function(n){ n.classList.toggle('active', n.dataset.target === id); });
+    try{ history.replaceState(null, '', '#' + id); }catch(e){}
+  }
+  navItems.forEach(function(btn){
+    btn.addEventListener('click', function(){ showSection(btn.dataset.target); window.scrollTo(0,0); });
+  });
+
+  var initial = (location.hash || '#overview').slice(1);
+  if(!document.getElementById('sec-' + initial)) initial = 'overview';
+  showSection(initial);
+</script>
