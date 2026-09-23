@@ -1497,6 +1497,13 @@
   function blobIsDrivingKeys(){
     return (settings.gazeIndicator === 'simulate' || settings.gazeIndicator === 'real') && isDevUser();
   }
+  // Declared here, before attachDwell/attachBlinkOnly, because both get
+  // called immediately below while building the keyboard and dock
+  // buttons - long before the rest of the gaze/blob-driving code
+  // further down in the file ever runs. Full details on this registry
+  // live down there with the functions that actually use it.
+  var gazeDwellRegistry = [];
+  var blobHoverEntry = null, blobDwellStart = null, blobCooldownEntry = null;
   function attachDwell(node, onCommit, isPrimaryKey){
     // isPrimaryKey nodes (keyboard keys, dock buttons) are also
     // registered as gaze/blob targets - see registerGazeTarget below.
@@ -2344,16 +2351,11 @@
      and every simulation/tracker frame hit-tests the blob's own
      position against this list instead of the mouse's real position.
      Native mouse hover/dwell/click on these same nodes steps aside
-     while this is active, so the two never fight over one target. */
-  var gazeDwellRegistry = [];
-  var blobHoverEntry = null, blobDwellStart = null;
-  // The target a gaze-driven dwell just committed on - it won't arm
-  // again until the blob genuinely leaves it, even though the hit test
-  // below re-runs every frame and would otherwise see the blob still
-  // sitting on the same target and fire again immediately. Same
-  // guarantee the real mouse path gets for free from mouseenter/
-  // mouseleave only firing on an actual boundary crossing.
-  var blobCooldownEntry = null;
+     while this is active, so the two never fight over one target.
+     (gazeDwellRegistry/blobHoverEntry/blobDwellStart/blobCooldownEntry
+     are declared up above, before attachDwell/attachBlinkOnly - both
+     get called as soon as the keyboard and dock buttons are built,
+     which happens long before this point in the file runs.) */
   // dwellEligible: true for keyboard keys/dock buttons (auto-commit
   // after sustained gaze, in typing mode) - false for suggestions/
   // favorites/star/ghost-text, which are ALWAYS click("blink")-only
