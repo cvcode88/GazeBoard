@@ -652,7 +652,7 @@
           <label><input type="radio" name="gazeIndicator" value="simulate"> Simulated webcam</label>
           <label><input type="radio" name="gazeIndicator" value="real"> Real webcam (experimental)</label>
         </div>
-        <div class="setting-hint">Simulated webcam replaces the small dot with a fuzzy, wandering blob approximating what a plain camera (no IR illumination or corneal-reflection tracking) actually outputs, instead of the mouse's perfect coordinates - and it isn't just cosmetic: the blob's own jittered position, not the real cursor, is what the keyboard actually hit-tests for dwell selection, so a wrong guess here is a wrong letter there. Within the blob, color runs darkest and most solid at the center (the actual estimate) and fades toward its edge (the surrounding uncertainty) - like a real confidence heatmap. Its hue shifts blue as recent movement speed increases (lower confidence mid-saccade) and orange as the mouse settles into a steadier fixation. Shape isn't fixed either: it's a little taller than wide even at rest (video-based trackers measure vertical gaze less precisely than horizontal - smaller range of motion, harder to detect), and stretches further along whatever direction it's currently moving, more so the faster it moves (webcam frame rate and processing lag mean the reported position blurs and trails behind the real one during fast eye movement) - with a softly morphing outline so it reads as a blob settling rather than a shape shaking in place. Real webcam replaces all of that with an actual eye tracker: <a href="https://webgazer.cs.brown.edu/" target="_blank" rel="noopener">WebGazer.js</a> (Brown University, open source since 2016) reads your real webcam through your browser and predicts where you're looking, using the exact same blob and key-selection pipeline described above - it's genuinely driving the keyboard, not a demo. Video never leaves this device; everything runs locally in your browser. It needs camera permission and a moment to load its face-tracking model, gets more accurate the more you use it, and its accuracy depends entirely on your real webcam, lighting and camera angle, not the slider below.</div>
+        <div class="setting-hint">Simulated webcam replaces the small dot with a fuzzy, wandering blob approximating what a plain camera (no IR illumination or corneal-reflection tracking) actually outputs, instead of the mouse's perfect coordinates - and it isn't just cosmetic: the blob's own jittered position, not the real cursor, is what the keyboard actually hit-tests for dwell selection, so a wrong guess here is a wrong letter there. Within the blob, color runs darkest and most solid at the center (the actual estimate) and fades toward its edge (the surrounding uncertainty) - like a real confidence heatmap. Its hue shifts blue as recent movement speed increases (lower confidence mid-saccade) and orange as the mouse settles into a steadier fixation. Shape isn't fixed either: it's a little taller than wide even at rest (video-based trackers measure vertical gaze less precisely than horizontal - smaller range of motion, harder to detect), and stretches further along whatever direction it's currently moving, more so the faster it moves (webcam frame rate and processing lag mean the reported position blurs and trails behind the real one during fast eye movement) - with a softly morphing outline so it reads as a blob settling rather than a shape shaking in place. Real webcam replaces all of that with an actual eye tracker: <a href="https://webgazer.cs.brown.edu/" target="_blank" rel="noopener">WebGazer.js</a> (Brown University, open source since 2016) reads your real webcam through your browser and predicts where you're looking, using the exact same blob and key-selection pipeline described above - it's genuinely driving the keyboard, not a demo. Video never leaves this device; everything runs locally in your browser. It needs camera permission and a moment to load its face-tracking model, gets more accurate the more you use it, and its accuracy depends entirely on your real webcam, lighting and camera angle, not the slider below. For the best real-world accuracy: sit at a consistent, comfortable distance (roughly arm's length, ~50-60cm), get your face evenly lit from the front rather than backlit or lit from below, put the camera as close to eye level as you can, keep your head fairly still and move your eyes rather than your head, and recalibrate whenever your seating, lighting or distance changes. Even under ideal conditions, published webcam-only eye tracking tops out around 2-4&deg; of accuracy - noticeably looser than a real IR tracker - so some residual imprecision is the technology's real ceiling, not something calibration alone fixes. Vertical tracking in particular is well documented as less precise than horizontal for this kind of tracker (smaller eye range of motion, eyelid occlusion), which this build partially compensates for with a vertical gain correction.</div>
       </div>
       <div class="setting-row" id="webcamQualityRow" hidden>
         <label>Webcam quality <span class="row-value" id="webcamQualityValue">Typical laptop webcam</span></label>
@@ -2413,7 +2413,7 @@
   // Lower REAL_GAZE_SMOOTHING = calmer but more sluggish to respond;
   // higher = snappier but jumpier. null means "not started yet" so the
   // very first real sample snaps to position instead of easing in from 0,0.
-  var REAL_GAZE_SMOOTHING = 0.18;
+  var REAL_GAZE_SMOOTHING = 0.10;
   var realSmoothX = null, realSmoothY = null;
   document.addEventListener('mousemove', function(e){
     // Real tracking owns devMouseX/Y from the webcam gaze listener below -
@@ -2680,10 +2680,26 @@
     var spread = xs.reduce(function(s,x,i){ return s + Math.hypot(x-mx, ys[i]-my); }, 0) / xs.length;
     return Math.max(0.1, Math.min(1, 1 - spread/220));
   }
+  // Webcam gaze trackers are well documented to read vertical eye
+  // position less precisely than horizontal - the eye's own vertical
+  // range of motion is smaller, eyelids partially occlude it, and a
+  // regression model shrinks its least-confident axis hardest toward
+  // the center (this is WHY - see the Gaze indicator hint text for the
+  // same effect in the simulated blob). REAL_VERTICAL_GAIN is a
+  // heuristic correction: it stretches the raw prediction's vertical
+  // distance from screen-center outward before using it, to compensate
+  // for that known under-range. 1.0 = no correction; higher pushes
+  // "looking up"/"looking down" further toward the true edges. This is
+  // a starting value, not a measured constant - raise it further if
+  // vertical still undershoots after recalibrating, lower it if it
+  // starts overshooting past where you're actually looking.
+  var REAL_VERTICAL_GAIN = 1.45;
   function onRealGazeData(data){
     if(!data) return;
-    devMouseX = data.x; devMouseY = data.y;
-    pushRealGazeSample(data.x, data.y);
+    var centerY = window.innerHeight/2;
+    var correctedY = centerY + (data.y-centerY)*REAL_VERTICAL_GAIN;
+    devMouseX = data.x; devMouseY = correctedY;
+    pushRealGazeSample(data.x, correctedY);
   }
   function setRealTrackerStatus(state, text){
     if(!el.realTrackerStatus) return;
