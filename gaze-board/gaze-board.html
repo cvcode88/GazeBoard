@@ -320,6 +320,21 @@
 
   .calib-summary{ text-align:left; font-size:0.85rem; color:var(--muted); background:var(--panel-2); border:1px solid var(--border); border-radius:10px; padding:12px 16px; margin-top:12px; }
   .calib-summary div{ display:flex; justify-content:space-between; padding:3px 0; }
+
+  /* ---------- real-webcam gaze calibration ---------- */
+  .gaze-calib-overlay[hidden]{ display:none; }
+  .gaze-calib-overlay{ position:fixed; inset:0; background:var(--bg); z-index:70; }
+  .gaze-calib-info{ position:fixed; top:28px; left:50%; transform:translateX(-50%); text-align:center; max-width:560px; padding:0 20px; }
+  .gaze-calib-info h2{ font-size:1.1rem; margin-bottom:8px; }
+  .gaze-calib-info p{ color:var(--muted); font-size:0.9rem; }
+  .gaze-calib-dot{
+    position:fixed; width:46px; height:46px; border-radius:50%; padding:0; border:3px solid var(--focus);
+    background:conic-gradient(var(--focus) calc(var(--fill,0)*360deg), transparent 0);
+    transform:translate(-50%,-50%); transition:left .35s ease, top .35s ease;
+  }
+  .gaze-calib-dot::after{ content:''; position:absolute; inset:13px; border-radius:50%; background:var(--focus); }
+  @media (prefers-reduced-motion:reduce){ .gaze-calib-dot{ transition:none; } }
+  .gaze-calib-skip{ position:fixed; bottom:24px; left:50%; transform:translateX(-50%); }
   .calib-summary b{ color:var(--text); font-family:"JetBrains Mono", monospace; }
 
   .gaze-dot{
@@ -639,7 +654,8 @@
       <div class="setting-row" id="realTrackerRow" hidden>
         <label>Real webcam tracker</label>
         <p class="real-tracker-status" id="realTrackerStatus" hidden></p>
-        <div class="setting-hint">The small video box in the corner is WebGazer's own view of your face - it's how you can tell it's genuinely tracking you rather than faking it. If the camera prompt never appears, or nothing ever tracks, this page is probably embedded in a viewer that blocks camera access - try opening it in its own browser tab.</div>
+        <button class="panel-btn" id="realRecalibrateBtn" hidden>Recalibrate eye tracking</button>
+        <div class="setting-hint">The small video box in the corner is WebGazer's own view of your face - it's how you can tell it's genuinely tracking you rather than faking it. Every letter, dock button, suggestion and favorite is gaze-driven while this is on: sustained gaze selects a key (typing mode) or a click confirms whatever you're looking at (blink mode) - the click can come from anywhere, a real switch included, since gaze is doing the pointing. If the camera prompt never appears, or nothing ever tracks, this page is probably embedded in a viewer that blocks camera access - try opening it in its own browser tab.</div>
       </div>
     </div>
 
@@ -652,6 +668,15 @@
       <div class="stats-charts" id="statsCharts"></div>
     </div>
   </aside>
+
+  <div class="gaze-calib-overlay" id="gazeCalibOverlay" hidden>
+    <div class="gaze-calib-info">
+      <h2>Calibrating real eye tracking</h2>
+      <p>Just look directly at the highlighted dot and hold still - it captures automatically and moves on by itself, no clicking needed. <span id="gazeCalibProgress">1 / 9</span></p>
+    </div>
+    <div class="gaze-calib-dot" id="gazeCalibDot" aria-hidden="true"></div>
+    <button type="button" class="text-btn gaze-calib-skip" id="gazeCalibSkip">Skip calibration</button>
+  </div>
 
   <div class="calibration" id="calibration" hidden></div>
   <div class="gaze-dot" id="gazeDot" hidden></div>
@@ -1439,6 +1464,11 @@
     webcamQualityRow: document.getElementById('webcamQualityRow'),
     realTrackerRow: document.getElementById('realTrackerRow'),
     realTrackerStatus: document.getElementById('realTrackerStatus'),
+    realRecalibrateBtn: document.getElementById('realRecalibrateBtn'),
+    gazeCalibOverlay: document.getElementById('gazeCalibOverlay'),
+    gazeCalibDot: document.getElementById('gazeCalibDot'),
+    gazeCalibProgress: document.getElementById('gazeCalibProgress'),
+    gazeCalibSkip: document.getElementById('gazeCalibSkip'),
     sessionStatsGrid: document.getElementById('sessionStatsGrid'),
     allTimeStatsGrid: document.getElementById('allTimeStatsGrid'),
     statsCharts: document.getElementById('statsCharts')
@@ -1453,14 +1483,21 @@
     node.classList.remove('selected'); void node.offsetWidth; node.classList.add('selected');
     setTimeout(function(){ node.classList.remove('selected'); }, 400);
   }
-  // isPrimaryKey: when true and dev-sim is actively driving the keyboard
-  // (see registerKeyForBlobDrive), native mouse hover/click on this node
+  // isPrimaryKey: when true and dev-sim/real tracking is actively driving
+  // (see registerGazeTarget), native mouse hover/click on this node
   // is ignored entirely - the blob-hit-testing loop in startDevGazeSim
-  // owns selection instead, so the two can't fight over the same key.
+  // owns selection instead, so the two can't fight over the same target.
   function blobIsDrivingKeys(){
     return (settings.gazeIndicator === 'simulate' || settings.gazeIndicator === 'real') && isDevUser();
   }
   function attachDwell(node, onCommit, isPrimaryKey){
+    // isPrimaryKey nodes (keyboard keys, dock buttons) are also
+    // registered as gaze/blob targets - see registerGazeTarget below.
+    // While gaze/blob is actually driving (blobIsDrivingKeys()), this
+    // node's own mouse-based hover/dwell/click steps aside entirely in
+    // favor of the shared gaze-driven pipeline, so the real cursor and
+    // the gaze estimate never fight over the same node.
+    if(isPrimaryKey) registerGazeTarget(node, onCommit, true);
     var timer = null;
     node.addEventListener('mouseenter', function(){
       if(isPrimaryKey && blobIsDrivingKeys()) return;
@@ -1507,9 +1544,21 @@
      commits a suggestion.
      ============================================================ */
   function attachBlinkOnly(node, onCommit){
-    node.addEventListener('mouseenter', function(){ node.classList.add('hover'); });
-    node.addEventListener('mouseleave', function(){ node.classList.remove('hover'); });
+    // Registered as a gaze target too (dwellEligible: false) - gaze can
+    // rest on it and light it up, exactly like a suggestion under the
+    // mouse, but it never auto-selects from dwell alone; only the
+    // global gaze-click handler below (or a real mouse click) commits it.
+    registerGazeTarget(node, onCommit, false);
+    node.addEventListener('mouseenter', function(){
+      if(blobIsDrivingKeys()) return;
+      node.classList.add('hover');
+    });
+    node.addEventListener('mouseleave', function(){
+      if(blobIsDrivingKeys()) return;
+      node.classList.remove('hover');
+    });
     node.addEventListener('click', function(){
+      if(blobIsDrivingKeys()) return; // the global gaze-click handler commits whatever's gaze-hovered instead
       flashSelected(node);
       onCommit();
     });
@@ -1523,8 +1572,10 @@
 
   function renderKeyboard(){
     el.keyboard.innerHTML = '';
-    keyDwellRegistry = [];
-    clearBlobKeyHover();
+    // Old key buttons' gaze-registry entries are pruned lazily (see
+    // pruneStaleGazeTargets) once they're disconnected below, rather
+    // than reset here - a full reset would also wipe dock buttons'
+    // entries, which this function never re-registers.
     // Scale the whole grid - cell size and gap - together with the keys
     // themselves, not just the buttons inside fixed-size cells, so keys
     // actually get bigger and further apart rather than overflowing their cell.
@@ -1549,7 +1600,6 @@
       btn.innerHTML = ringSvg + '<span class="key-label">' + k.ch + '</span>';
       var commitFn = function(ch){ return function(){ handleCharCommit(ch); }; }(k.ch);
       attachDwell(btn, commitFn, true);
-      registerKeyForBlobDrive(btn, commitFn);
       el.keyboard.appendChild(btn);
     });
   }
@@ -1564,7 +1614,7 @@
       else if(action === 'clear') handleClear();
       else if(action === 'speak') handleSpeak();
       else if(action === 'keyset') toggleKeyset();
-    });
+    }, true);
   });
 
   function toggleKeyset(){
@@ -2278,50 +2328,64 @@
     return 'radial-gradient(circle, rgba('+centerRgb+',0.92) 0%, rgba('+centerRgb+',0.55) 45%, rgba('+edgeRgb+',0.3) 80%, rgba('+edgeRgb+',0.05) 100%)';
   }
 
-  /* When the dev webcam simulation is active, the blob doesn't just sit
-     on top of the real cursor for show - it actually drives which key
-     gets selected, the same way a real (imprecise) gaze estimate would
-     have to. Keyboard keys register themselves here; each simulation
-     frame hit-tests the blob's own jittered position against this list
-     instead of the mouse's real position, and runs its own independent
-     dwell timer. attachDwell()'s native mouse handling steps aside for
-     these same nodes while this is active (see isPrimaryKey above), so
-     the two never fight over one key at once. */
-  var keyDwellRegistry = [];
+  /* When the dev webcam simulation (or the real webcam tracker) is
+     active, the blob doesn't just sit on top of the real cursor for
+     show - it actually drives selection across the WHOLE app, the same
+     way a real (imprecise) gaze estimate would have to: keyboard keys,
+     dock buttons, suggestions, favorites and the star button all
+     register themselves here (see attachDwell/attachBlinkOnly above),
+     and every simulation/tracker frame hit-tests the blob's own
+     position against this list instead of the mouse's real position.
+     Native mouse hover/dwell/click on these same nodes steps aside
+     while this is active, so the two never fight over one target. */
+  var gazeDwellRegistry = [];
   var blobHoverEntry = null, blobDwellStart = null;
-  // The key a blob-driven dwell just committed on - it won't arm again
-  // until the blob genuinely leaves it, even though the hit test below
-  // re-runs every animation frame and would otherwise see the blob still
-  // sitting on the same key and fire again immediately. Same guarantee
-  // the real mouse path gets for free from mouseenter/mouseleave only
-  // firing on an actual boundary crossing.
+  // The target a gaze-driven dwell just committed on - it won't arm
+  // again until the blob genuinely leaves it, even though the hit test
+  // below re-runs every frame and would otherwise see the blob still
+  // sitting on the same target and fire again immediately. Same
+  // guarantee the real mouse path gets for free from mouseenter/
+  // mouseleave only firing on an actual boundary crossing.
   var blobCooldownEntry = null;
-  function registerKeyForBlobDrive(node, onCommit){
-    keyDwellRegistry.push({ node: node, onCommit: onCommit });
+  // dwellEligible: true for keyboard keys/dock buttons (auto-commit
+  // after sustained gaze, in typing mode) - false for suggestions/
+  // favorites/star/ghost-text, which are ALWAYS click("blink")-only
+  // regardless of typing/blink mode, gaze-driven or not.
+  function registerGazeTarget(node, onCommit, dwellEligible){
+    gazeDwellRegistry.push({ node: node, onCommit: onCommit, dwellEligible: !!dwellEligible });
   }
-  function clearBlobKeyHover(){
+  // Suggestions, favorites and ghost-text are rebuilt from scratch on
+  // most keystrokes (innerHTML wiped and re-rendered) - rather than
+  // teach every render function to unregister its old buttons, stale
+  // entries are pruned lazily here, the one place that actually reads
+  // this list every frame.
+  function pruneStaleGazeTargets(){
+    gazeDwellRegistry = gazeDwellRegistry.filter(function(e){ return e.node.isConnected; });
+  }
+  function clearGazeHover(){
     if(blobHoverEntry) blobHoverEntry.node.classList.remove('hover', 'dwelling');
     blobHoverEntry = null;
     blobDwellStart = null;
   }
   function updateBlobKeyHover(x, y){
+    pruneStaleGazeTargets();
     var target = null;
-    for(var i=0; i<keyDwellRegistry.length; i++){
-      var entry = keyDwellRegistry[i];
+    for(var i=0; i<gazeDwellRegistry.length; i++){
+      var entry = gazeDwellRegistry[i];
       var r = entry.node.getBoundingClientRect();
       if(x >= r.left && x <= r.right && y >= r.top && y <= r.bottom){ target = entry; break; }
     }
     if(blobCooldownEntry && target !== blobCooldownEntry) blobCooldownEntry = null;
     if(target !== blobHoverEntry){
-      clearBlobKeyHover();
+      clearGazeHover();
       blobHoverEntry = target;
-      // Same rule as native dwell: blink mode or typing mode off means
-      // hovering alone should never select anything, including here -
-      // there's no synthetic "blink" for the blob to trigger on, so
-      // blob-driven selection just idles (still visible) in that case.
-      // A key still on cooldown gets the same idle treatment: visibly
-      // hovered, but never re-arms into "dwelling".
-      if(target && target !== blobCooldownEntry && settings.typingMode && !settings.blinkMode){
+      // dwell-eligible targets (keys/dock) auto-commit after sustained
+      // gaze, but only in typing mode - blink mode (or a not-dwell-
+      // eligible target like a suggestion) just idles here, visibly
+      // hovered, waiting for the global gaze-click handler below
+      // instead. A target still on cooldown gets the same idle
+      // treatment: visibly hovered, but never re-arms into "dwelling".
+      if(target && target !== blobCooldownEntry && target.dwellEligible && settings.typingMode && !settings.blinkMode){
         target.node.classList.add('hover', 'dwelling');
         blobDwellStart = performance.now();
       }else if(target){
@@ -2330,12 +2394,36 @@
     }
     if(blobHoverEntry && blobDwellStart !== null && performance.now() - blobDwellStart >= settings.dwellTime){
       var committed = blobHoverEntry;
-      clearBlobKeyHover();
+      clearGazeHover();
       blobCooldownEntry = committed;
       flashSelected(committed.node);
       committed.onCommit();
     }
   }
+  // The "blink" for gaze-driven selection: since WebGazer only predicts
+  // WHERE you're looking, not a real eye-blink, an actual click stands
+  // in for it exactly like it already does for suggestions/favorites -
+  // but the click can land anywhere (a real mouse click, or a switch
+  // wired to send one), because with gaze doing the pointing, the
+  // click's own on-screen position is meaningless. It commits whatever
+  // is currently gaze-hovered, for anything that doesn't already
+  // auto-commit via dwell (every not-dwell-eligible target, or any
+  // target at all while blink mode is on).
+  document.addEventListener('click', function(e){
+    if(!blobIsDrivingKeys() || !blobHoverEntry) return;
+    if(blobHoverEntry.dwellEligible && !settings.blinkMode) return; // that one auto-commits via dwell instead
+    // A click actually meant for the settings panel, the calibration
+    // overlay or the auth gate (mouse-driven meta-navigation, not the
+    // gaze-typing surface) shouldn't also fire a gaze commit just
+    // because gaze happens to be resting on a keyboard key at that
+    // instant.
+    if(e.target.closest('.settings-panel, .gaze-calib-overlay, .auth-gate')) return;
+    var committed = blobHoverEntry;
+    clearGazeHover();
+    blobCooldownEntry = committed;
+    flashSelected(committed.node);
+    committed.onCommit();
+  });
   /* Both ends grounded in published webcam-gaze-tracking studies (see
      the Webcam quality setting's own hint text for citations): ~100px
      is close to the best documented accuracy for calibrated, well-lit
@@ -2414,7 +2502,7 @@
     devAnimId = null;
     el.gazeBlob.hidden = true;
     el.gazeDot.hidden = !settings.showGazeDot;
-    clearBlobKeyHover();
+    clearGazeHover();
     blobCooldownEntry = null;
   }
 
@@ -2519,21 +2607,107 @@
       return;
     }
     realTrackingActive = true;
-    setRealTrackerStatus('active', 'Live — look around and use the keyboard normally. Accuracy improves the more you use it (WebGazer learns from your clicks).');
+    setRealTrackerStatus('loading', 'Camera connected — calibrating…');
+    if(el.realRecalibrateBtn) el.realRecalibrateBtn.hidden = false;
     if(realNoDataTimer) clearTimeout(realNoDataTimer);
     realNoDataTimer = setTimeout(function(){
       if(realTrackingActive && realGazeHistory.length === 0){
         setRealTrackerStatus('error', 'No camera data came through — check that you allowed camera access, that no other app is using the camera, or try opening this page in its own browser tab.');
       }
     }, 6000);
-    startDevGazeSim();
+    startGazeCalibration();
   }
   function stopRealGazeTracking(){
     if(realNoDataTimer){ clearTimeout(realNoDataTimer); realNoDataTimer = null; }
+    if(gazeCalibTimer){ clearTimeout(gazeCalibTimer); gazeCalibTimer = null; }
+    gazeCalibState = null;
+    if(el.gazeCalibOverlay) el.gazeCalibOverlay.hidden = true;
+    if(el.realRecalibrateBtn) el.realRecalibrateBtn.hidden = true;
     if(!realTrackingActive) return;
     realTrackingActive = false;
     try{ if(window.webgazer) window.webgazer.end(); }catch(e){}
     setRealTrackerStatus('', '');
+  }
+
+  /* ============================================================
+     Gaze-position calibration for the real tracker - separate from
+     the dwell-TIMING calibration above (that measures how fast this
+     person can reliably fixate; this trains WebGazer's own model to
+     map its raw eye/face features to actual screen coordinates for
+     THIS face, THIS webcam, THIS lighting and seating position).
+     webgazer.recordScreenPosition(x, y, 'click') feeds it a
+     known-correct (feature, screen position) pair - the same training
+     signal WebGazer already collects from ordinary clicks anywhere on
+     the page, just deliberately spread across the whole screen with a
+     known ground truth instead of wherever a click happens to land.
+     Fully hands-free by design, on purpose, for an eye-gaze app: no
+     click required anywhere in this flow. A brief settle period lets
+     the eyes actually arrive at the new dot before anything is
+     trusted as "looking here"; then a burst of samples is recorded
+     automatically while assuming the person is holding their gaze on
+     it, exactly the same trust assumption a click would have made
+     ("I'm looking here right now"), just given by holding still
+     instead of a hand action. The eventType string passed is still
+     'click' - that's WebGazer's own internal label for this kind of
+     high-confidence sample, not a claim that a click happened.
+     ============================================================ */
+  var GAZE_CALIB_POINTS = [
+    [0.08,0.10],[0.5,0.10],[0.92,0.10],
+    [0.08,0.5], [0.5,0.5], [0.92,0.5],
+    [0.08,0.90],[0.5,0.90],[0.92,0.90]
+  ];
+  var GAZE_CALIB_SETTLE_MS = 800;    // time to let the eyes move to the new dot before recording anything
+  var GAZE_CALIB_SAMPLE_MS = 250;    // gap between samples once capturing
+  var GAZE_CALIB_SAMPLES_NEEDED = 9; // ~2.25s of capture per dot
+  var gazeCalibState = null, gazeCalibTimer = null;
+  function gazeCalibTargetPx(){
+    var p = GAZE_CALIB_POINTS[gazeCalibState.index];
+    return { x: Math.round(window.innerWidth*p[0]), y: Math.round(window.innerHeight*p[1]) };
+  }
+  function renderGazeCalibPoint(){
+    if(!gazeCalibState || !el.gazeCalibDot) return;
+    var pt = gazeCalibTargetPx();
+    el.gazeCalibDot.style.left = pt.x + 'px';
+    el.gazeCalibDot.style.top = pt.y + 'px';
+    el.gazeCalibDot.style.setProperty('--fill', 0);
+    if(el.gazeCalibProgress) el.gazeCalibProgress.textContent = (gazeCalibState.index+1) + ' / ' + GAZE_CALIB_POINTS.length;
+    if(gazeCalibTimer) clearTimeout(gazeCalibTimer);
+    gazeCalibTimer = setTimeout(beginGazeCalibCapture, GAZE_CALIB_SETTLE_MS);
+  }
+  function beginGazeCalibCapture(){
+    if(!gazeCalibState) return;
+    gazeCalibState.samples = 0;
+    captureGazeCalibSample();
+  }
+  function captureGazeCalibSample(){
+    if(!gazeCalibState) return;
+    var pt = gazeCalibTargetPx();
+    if(window.webgazer) window.webgazer.recordScreenPosition(pt.x, pt.y, 'click');
+    gazeCalibState.samples++;
+    el.gazeCalibDot.style.setProperty('--fill', Math.min(1, gazeCalibState.samples/GAZE_CALIB_SAMPLES_NEEDED));
+    if(gazeCalibState.samples >= GAZE_CALIB_SAMPLES_NEEDED){
+      gazeCalibState.index++;
+      if(gazeCalibState.index >= GAZE_CALIB_POINTS.length) endGazeCalibration(true);
+      else renderGazeCalibPoint();
+    }else{
+      gazeCalibTimer = setTimeout(captureGazeCalibSample, GAZE_CALIB_SAMPLE_MS);
+    }
+  }
+  function startGazeCalibration(){
+    if(!el.gazeCalibOverlay) return;
+    if(gazeCalibTimer){ clearTimeout(gazeCalibTimer); gazeCalibTimer = null; }
+    gazeCalibState = { index: 0, samples: 0 };
+    el.gazeCalibOverlay.hidden = false;
+    renderGazeCalibPoint();
+  }
+  function endGazeCalibration(completed){
+    if(gazeCalibTimer){ clearTimeout(gazeCalibTimer); gazeCalibTimer = null; }
+    gazeCalibState = null;
+    if(el.gazeCalibOverlay) el.gazeCalibOverlay.hidden = true;
+    setRealTrackerStatus('active', completed
+      ? 'Live and calibrated — look around and use the keyboard normally. Hit Recalibrate any time accuracy drifts.'
+      : 'Live (skipped calibration — accuracy will be rough). Hit Recalibrate any time.');
+    startDevGazeSim();
   }
   function webcamQualityLabel(q){
     if(q < 20) return 'Rough, uncalibrated webcam';
@@ -2739,6 +2913,8 @@
 
   el.recalibrateBtn.addEventListener('click', function(){ closeSettings(); startCalibration(); });
   el.calibHint.hidden = hasCalibration();
+  el.gazeCalibSkip.addEventListener('click', function(){ endGazeCalibration(false); });
+  el.realRecalibrateBtn.addEventListener('click', startGazeCalibration);
 
   /* ============================================================
      Auth gate wiring — tabs, form submits, sign out.
