@@ -672,7 +672,7 @@
   <div class="gaze-calib-overlay" id="gazeCalibOverlay" hidden>
     <div class="gaze-calib-info">
       <h2>Calibrating real eye tracking</h2>
-      <p>Just look directly at the highlighted dot and hold still - it captures automatically and moves on by itself, no clicking needed. <span id="gazeCalibProgress">1 / 9</span></p>
+      <p>Just look directly at the highlighted dot and hold still - it captures automatically and moves on by itself, no clicking needed. Takes about 2 minutes with this many points, on purpose - more coverage means better accuracy. <span id="gazeCalibProgress">1 / 25</span></p>
     </div>
     <div class="gaze-calib-dot" id="gazeCalibDot" aria-hidden="true"></div>
     <button type="button" class="text-btn gaze-calib-skip" id="gazeCalibSkip">Skip calibration</button>
@@ -2660,14 +2660,21 @@
      'click' - that's WebGazer's own internal label for this kind of
      high-confidence sample, not a claim that a click happened.
      ============================================================ */
-  var GAZE_CALIB_POINTS = [
-    [0.08,0.10],[0.5,0.10],[0.92,0.10],
-    [0.08,0.5], [0.5,0.5], [0.92,0.5],
-    [0.08,0.90],[0.5,0.90],[0.92,0.90]
-  ];
-  var GAZE_CALIB_SETTLE_MS = 800;    // time to let the eyes move to the new dot before recording anything
-  var GAZE_CALIB_SAMPLE_MS = 250;    // gap between samples once capturing
-  var GAZE_CALIB_SAMPLES_NEEDED = 9; // ~2.25s of capture per dot
+  // A 5x5 grid (25 points) instead of 3x3 - a lot more coverage across
+  // the screen, including points between the edges and center that a
+  // sparser grid skips entirely, which is exactly where a ridge
+  // regression model tends to guess worst.
+  var GAZE_CALIB_POINTS = (function(){
+    var fracs = [0.08, 0.29, 0.5, 0.71, 0.92];
+    var pts = [];
+    for(var yi=0; yi<fracs.length; yi++){
+      for(var xi=0; xi<fracs.length; xi++) pts.push([fracs[xi], fracs[yi]]);
+    }
+    return pts;
+  })();
+  var GAZE_CALIB_SETTLE_MS = 1000;    // time to let the eyes move to the new dot before recording anything
+  var GAZE_CALIB_SAMPLE_MS = 250;     // gap between samples once capturing
+  var GAZE_CALIB_SAMPLES_NEEDED = 14; // ~3.5s of capture per dot (~4.5s per dot total, ~112s / 25 dots)
   var gazeCalibState = null, gazeCalibTimer = null;
   function gazeCalibTargetPx(){
     var p = GAZE_CALIB_POINTS[gazeCalibState.index];
