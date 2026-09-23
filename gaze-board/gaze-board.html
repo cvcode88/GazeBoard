@@ -323,8 +323,15 @@
 
   /* ---------- real-webcam gaze calibration ---------- */
   .gaze-calib-overlay[hidden]{ display:none; }
-  .gaze-calib-overlay{ position:fixed; inset:0; background:var(--bg); z-index:70; }
+  .gaze-calib-overlay{ position:fixed; inset:0; background:var(--bg); z-index:70; display:flex; align-items:center; justify-content:center; }
+  .gaze-calib-setup{ text-align:center; max-width:480px; padding:0 20px; }
+  .gaze-calib-setup[hidden]{ display:none; }
+  .gaze-calib-setup h2{ font-size:1.2rem; margin-bottom:10px; }
+  .gaze-calib-setup > p{ color:var(--muted); font-size:0.88rem; margin-bottom:18px; }
+  .gaze-calib-setup .radio-group{ text-align:left; display:inline-flex; flex-direction:column; gap:10px; margin-bottom:22px; }
+  .gaze-calib-setup-actions{ display:flex; flex-direction:column; align-items:center; gap:6px; }
   .gaze-calib-info{ position:fixed; top:28px; left:50%; transform:translateX(-50%); text-align:center; max-width:560px; padding:0 20px; }
+  .gaze-calib-info[hidden]{ display:none; }
   .gaze-calib-info h2{ font-size:1.1rem; margin-bottom:8px; }
   .gaze-calib-info p{ color:var(--muted); font-size:0.9rem; }
   .gaze-calib-dot{
@@ -670,12 +677,25 @@
   </aside>
 
   <div class="gaze-calib-overlay" id="gazeCalibOverlay" hidden>
-    <div class="gaze-calib-info">
-      <h2>Calibrating real eye tracking</h2>
-      <p>Just look directly at the highlighted dot and hold still - it captures automatically and moves on by itself, no clicking needed. Takes about 2 minutes with this many points, on purpose - more coverage means better accuracy. <span id="gazeCalibProgress">1 / 25</span></p>
+    <div class="gaze-calib-setup" id="gazeCalibSetup">
+      <h2>Calibrate real eye tracking</h2>
+      <p>Look at a grid of dots, one at a time, and hold still on each - fully hands-free, no clicking. It sweeps the whole grid several times (more rounds, spread evenly, work better than fewer long stares - see the hint text in the Dev tab if you're curious why).</p>
+      <div class="radio-group">
+        <label><input type="radio" name="gazeCalibGrid" value="3"> Quick — 3&times;3 grid (~1 min)</label>
+        <label><input type="radio" name="gazeCalibGrid" value="5" checked> Standard — 5&times;5 grid (~2 min)</label>
+        <label><input type="radio" name="gazeCalibGrid" value="7"> Thorough — 7&times;7 grid (~3 min)</label>
+      </div>
+      <div class="gaze-calib-setup-actions">
+        <button type="button" class="primary-btn" id="gazeCalibStartBtn">Start calibration</button>
+        <button type="button" class="text-btn" id="gazeCalibSetupSkipBtn">Skip calibration</button>
+      </div>
     </div>
-    <div class="gaze-calib-dot" id="gazeCalibDot" aria-hidden="true"></div>
-    <button type="button" class="text-btn gaze-calib-skip" id="gazeCalibSkip">Skip calibration</button>
+    <div class="gaze-calib-info" id="gazeCalibInfo" hidden>
+      <h2>Calibrating real eye tracking</h2>
+      <p>Just look directly at the highlighted dot and hold still - it captures automatically and moves on by itself, no clicking needed. <span id="gazeCalibProgress">1 / 100</span></p>
+    </div>
+    <div class="gaze-calib-dot" id="gazeCalibDot" aria-hidden="true" hidden></div>
+    <button type="button" class="text-btn gaze-calib-skip" id="gazeCalibSkip" hidden>Skip calibration</button>
   </div>
 
   <div class="calibration" id="calibration" hidden></div>
@@ -1473,6 +1493,10 @@
     realTrackerStatus: document.getElementById('realTrackerStatus'),
     realRecalibrateBtn: document.getElementById('realRecalibrateBtn'),
     gazeCalibOverlay: document.getElementById('gazeCalibOverlay'),
+    gazeCalibSetup: document.getElementById('gazeCalibSetup'),
+    gazeCalibStartBtn: document.getElementById('gazeCalibStartBtn'),
+    gazeCalibSetupSkipBtn: document.getElementById('gazeCalibSetupSkipBtn'),
+    gazeCalibInfo: document.getElementById('gazeCalibInfo'),
     gazeCalibDot: document.getElementById('gazeCalibDot'),
     gazeCalibProgress: document.getElementById('gazeCalibProgress'),
     gazeCalibSkip: document.getElementById('gazeCalibSkip'),
@@ -2624,7 +2648,7 @@
         setRealTrackerStatus('error', 'No camera data came through — check that you allowed camera access, that no other app is using the camera, or try opening this page in its own browser tab.');
       }
     }, 6000);
-    startGazeCalibration();
+    showGazeCalibSetup();
   }
   function stopRealGazeTracking(){
     if(realNoDataTimer){ clearTimeout(realNoDataTimer); realNoDataTimer = null; }
@@ -2652,32 +2676,44 @@
      Fully hands-free by design, on purpose, for an eye-gaze app: no
      click required anywhere in this flow. A brief settle period lets
      the eyes actually arrive at the new dot before anything is
-     trusted as "looking here"; then a burst of samples is recorded
-     automatically while assuming the person is holding their gaze on
-     it, exactly the same trust assumption a click would have made
-     ("I'm looking here right now"), just given by holding still
-     instead of a hand action. The eventType string passed is still
-     'click' - that's WebGazer's own internal label for this kind of
-     high-confidence sample, not a claim that a click happened.
+     trusted as "looking here"; then a small burst of samples is
+     recorded automatically while assuming the person is holding their
+     gaze on it. The eventType string passed is still 'click' - that's
+     WebGazer's own internal label for this kind of high-confidence
+     sample, not a claim that a click happened.
+
+     IMPORTANT, learned the hard way: WebGazer's ridge regression keeps
+     only its last 50 training samples (a fixed-size ring buffer -
+     confirmed straight from its source, `InitRegression` hardcodes
+     `var e=50`). Recording many samples at point 1, then moving on and
+     recording many more at point 2, and so on, silently evicts point
+     1's (and 2's, and 3's...) samples once the buffer fills - so by
+     the last point, the model may have been trained almost entirely
+     on wherever calibration LAST visited (this is exactly what caused
+     predictions to stick near the bottom of the screen: calibration
+     swept top-to-bottom, so the bottom row was the only thing left in
+     the buffer by the end). The fix is ROUND-ROBIN: sweep across every
+     point taking just one or two samples each, then loop back and
+     sweep again for more rounds - so the buffer's last ~50 samples are
+     always a fresh, even spread across the WHOLE grid, never just
+     whichever point happened to be visited last.
      ============================================================ */
-  // A 5x5 grid (25 points) instead of 3x3 - a lot more coverage across
-  // the screen, including points between the edges and center that a
-  // sparser grid skips entirely, which is exactly where a ridge
-  // regression model tends to guess worst.
-  var GAZE_CALIB_POINTS = (function(){
-    var fracs = [0.08, 0.29, 0.5, 0.71, 0.92];
+  var GAZE_CALIB_ROUNDS = 4;
+  var GAZE_CALIB_SETTLE_MS = 600;   // time to let the eyes move to the new dot before recording anything
+  var GAZE_CALIB_SAMPLE_MS = 250;   // gap between samples once capturing
+  var GAZE_CALIB_BUFFER_SIZE = 50;  // WebGazer's own fixed training-buffer size - never plan to exceed it per sweep
+  var gazeCalibState = null, gazeCalibTimer = null;
+  function buildGazeCalibPoints(n){
+    var fracs = [];
+    for(var i=0; i<n; i++) fracs.push(n === 1 ? 0.5 : 0.08 + (0.92-0.08)*(i/(n-1)));
     var pts = [];
-    for(var yi=0; yi<fracs.length; yi++){
-      for(var xi=0; xi<fracs.length; xi++) pts.push([fracs[xi], fracs[yi]]);
+    for(var yi=0; yi<n; yi++){
+      for(var xi=0; xi<n; xi++) pts.push([fracs[xi], fracs[yi]]);
     }
     return pts;
-  })();
-  var GAZE_CALIB_SETTLE_MS = 1000;    // time to let the eyes move to the new dot before recording anything
-  var GAZE_CALIB_SAMPLE_MS = 250;     // gap between samples once capturing
-  var GAZE_CALIB_SAMPLES_NEEDED = 14; // ~3.5s of capture per dot (~4.5s per dot total, ~112s / 25 dots)
-  var gazeCalibState = null, gazeCalibTimer = null;
+  }
   function gazeCalibTargetPx(){
-    var p = GAZE_CALIB_POINTS[gazeCalibState.index];
+    var p = gazeCalibState.points[gazeCalibState.index];
     return { x: Math.round(window.innerWidth*p[0]), y: Math.round(window.innerHeight*p[1]) };
   }
   function renderGazeCalibPoint(){
@@ -2686,7 +2722,11 @@
     el.gazeCalibDot.style.left = pt.x + 'px';
     el.gazeCalibDot.style.top = pt.y + 'px';
     el.gazeCalibDot.style.setProperty('--fill', 0);
-    if(el.gazeCalibProgress) el.gazeCalibProgress.textContent = (gazeCalibState.index+1) + ' / ' + GAZE_CALIB_POINTS.length;
+    if(el.gazeCalibProgress){
+      var doneVisits = gazeCalibState.round*gazeCalibState.points.length + gazeCalibState.index;
+      var totalVisits = gazeCalibState.points.length*GAZE_CALIB_ROUNDS;
+      el.gazeCalibProgress.textContent = (doneVisits+1) + ' / ' + totalVisits;
+    }
     if(gazeCalibTimer) clearTimeout(gazeCalibTimer);
     gazeCalibTimer = setTimeout(beginGazeCalibCapture, GAZE_CALIB_SETTLE_MS);
   }
@@ -2700,19 +2740,42 @@
     var pt = gazeCalibTargetPx();
     if(window.webgazer) window.webgazer.recordScreenPosition(pt.x, pt.y, 'click');
     gazeCalibState.samples++;
-    el.gazeCalibDot.style.setProperty('--fill', Math.min(1, gazeCalibState.samples/GAZE_CALIB_SAMPLES_NEEDED));
-    if(gazeCalibState.samples >= GAZE_CALIB_SAMPLES_NEEDED){
-      gazeCalibState.index++;
-      if(gazeCalibState.index >= GAZE_CALIB_POINTS.length) endGazeCalibration(true);
-      else renderGazeCalibPoint();
+    el.gazeCalibDot.style.setProperty('--fill', Math.min(1, gazeCalibState.samples/gazeCalibState.samplesPerVisit));
+    if(gazeCalibState.samples >= gazeCalibState.samplesPerVisit){
+      advanceGazeCalibVisit();
     }else{
       gazeCalibTimer = setTimeout(captureGazeCalibSample, GAZE_CALIB_SAMPLE_MS);
     }
   }
-  function startGazeCalibration(){
+  function advanceGazeCalibVisit(){
+    gazeCalibState.index++;
+    if(gazeCalibState.index >= gazeCalibState.points.length){
+      gazeCalibState.index = 0;
+      gazeCalibState.round++;
+      if(gazeCalibState.round >= GAZE_CALIB_ROUNDS){ endGazeCalibration(true); return; }
+    }
+    renderGazeCalibPoint();
+  }
+  function showGazeCalibSetup(){
     if(!el.gazeCalibOverlay) return;
     if(gazeCalibTimer){ clearTimeout(gazeCalibTimer); gazeCalibTimer = null; }
-    gazeCalibState = { index: 0, samples: 0 };
+    gazeCalibState = null;
+    el.gazeCalibOverlay.hidden = false;
+    if(el.gazeCalibSetup) el.gazeCalibSetup.hidden = false;
+    if(el.gazeCalibInfo) el.gazeCalibInfo.hidden = true;
+    el.gazeCalibDot.hidden = true;
+    if(el.gazeCalibSkip) el.gazeCalibSkip.hidden = true;
+  }
+  function startGazeCalibration(gridSize){
+    if(!el.gazeCalibOverlay) return;
+    if(gazeCalibTimer){ clearTimeout(gazeCalibTimer); gazeCalibTimer = null; }
+    var points = buildGazeCalibPoints(gridSize || 5);
+    var samplesPerVisit = Math.max(1, Math.floor(GAZE_CALIB_BUFFER_SIZE/points.length));
+    gazeCalibState = { points: points, samplesPerVisit: samplesPerVisit, round: 0, index: 0, samples: 0 };
+    if(el.gazeCalibSetup) el.gazeCalibSetup.hidden = true;
+    if(el.gazeCalibInfo) el.gazeCalibInfo.hidden = false;
+    el.gazeCalibDot.hidden = false;
+    if(el.gazeCalibSkip) el.gazeCalibSkip.hidden = false;
     el.gazeCalibOverlay.hidden = false;
     renderGazeCalibPoint();
   }
@@ -2930,7 +2993,12 @@
   el.recalibrateBtn.addEventListener('click', function(){ closeSettings(); startCalibration(); });
   el.calibHint.hidden = hasCalibration();
   el.gazeCalibSkip.addEventListener('click', function(){ endGazeCalibration(false); });
-  el.realRecalibrateBtn.addEventListener('click', startGazeCalibration);
+  el.gazeCalibSetupSkipBtn.addEventListener('click', function(){ endGazeCalibration(false); });
+  el.gazeCalibStartBtn.addEventListener('click', function(){
+    var chosen = document.querySelector('input[name="gazeCalibGrid"]:checked');
+    startGazeCalibration(chosen ? Number(chosen.value) : 5);
+  });
+  el.realRecalibrateBtn.addEventListener('click', showGazeCalibSetup);
 
   /* ============================================================
      Auth gate wiring — tabs, form submits, sign out.
