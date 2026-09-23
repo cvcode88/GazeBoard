@@ -353,6 +353,39 @@
   .gaze-calib-dot::after{ content:''; position:absolute; inset:13px; border-radius:50%; background:var(--focus); }
   @media (prefers-reduced-motion:reduce){ .gaze-calib-dot{ transition:none; } }
   .gaze-calib-skip{ position:fixed; bottom:24px; left:50%; transform:translateX(-50%); }
+
+  /* ---------- 1v1 practice arena (hidden easter egg) ---------- */
+  .royale-overlay[hidden]{ display:none; }
+  .royale-overlay{ position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:65; display:flex; align-items:center; justify-content:center; }
+  .royale-lobby-card{ position:relative; background:var(--panel); border:1px solid var(--border); border-radius:18px; box-shadow:var(--shadow,0 12px 36px rgba(0,0,0,.3)); padding:32px 30px; width:min(360px,90vw); text-align:center; }
+  .royale-lobby-card h2{ font-size:1.15rem; margin-bottom:6px; }
+  .royale-sub{ color:var(--muted); font-size:0.82rem; margin-bottom:20px; }
+  .royale-close{ position:absolute; top:10px; right:12px; background:none; border:none; font-size:1.3rem; line-height:1; color:var(--muted); cursor:pointer; padding:4px 8px; }
+  .royale-mascot{
+    width:84px; height:84px; margin:0 auto 18px; border-radius:50%; background:var(--royale-skin,var(--accent));
+    display:flex; align-items:center; justify-content:center; gap:14px; box-shadow:0 6px 16px rgba(0,0,0,.2); transition:background .2s ease;
+  }
+  .royale-eye{ width:16px; height:16px; border-radius:50%; background:#fff; position:relative; }
+  .royale-eye::after{ content:''; position:absolute; width:8px; height:8px; border-radius:50%; background:#182220; top:50%; left:50%; transform:translate(-50%,-50%); }
+  .royale-skins{ display:flex; justify-content:center; gap:10px; margin-bottom:22px; }
+  .royale-race-banner[hidden]{ display:none; }
+  .royale-race-banner{
+    position:fixed; top:14px; left:50%; transform:translateX(-50%); z-index:40; background:var(--panel);
+    border:1px solid var(--border); border-radius:16px; box-shadow:0 10px 28px rgba(0,0,0,.25); padding:16px 22px 14px;
+    width:min(480px,92vw); text-align:center;
+  }
+  .royale-race-word{ font-weight:700; font-size:1rem; margin-bottom:10px; letter-spacing:.03em; }
+  .royale-race-word span{ font-family:"JetBrains Mono",monospace; color:var(--accent); text-transform:uppercase; }
+  .royale-race-tracks{ display:flex; flex-direction:column; gap:8px; margin-bottom:6px; }
+  .royale-track{ display:flex; align-items:center; gap:10px; }
+  .royale-track-label{ width:32px; font-size:0.76rem; font-weight:700; color:var(--muted); text-align:left; }
+  .royale-track-bar{ flex:1; height:12px; border-radius:7px; background:var(--panel-2); border:1px solid var(--border); overflow:hidden; }
+  .royale-track-fill{ height:100%; width:0%; border-radius:7px; transition:width .12s linear; }
+  .royale-track-fill.you{ background:var(--royale-skin,var(--accent)); }
+  .royale-track-fill.bot{ background:var(--danger,#B3452F); }
+  .royale-race-result{ font-weight:700; margin:8px 0 4px; }
+  .royale-race-result[hidden]{ display:none; }
+  .royale-race-actions{ display:flex; justify-content:center; gap:10px; margin-top:6px; }
   .calib-summary b{ color:var(--text); font-family:"JetBrains Mono", monospace; }
 
   .gaze-dot{
@@ -686,6 +719,36 @@
       <div class="stats-charts" id="statsCharts"></div>
     </div>
   </aside>
+
+  <div class="royale-overlay" id="royaleLobby" hidden>
+    <div class="royale-lobby-card">
+      <button type="button" class="royale-close" id="royaleLobbyClose" aria-label="Close">&times;</button>
+      <h2>1v1 Practice Arena</h2>
+      <p class="royale-sub">Race the bot to spell the word first - using your real gaze keyboard. Good typing practice, a little competitive fun.</p>
+      <div class="royale-mascot" id="royaleMascot"><div class="royale-eye"></div><div class="royale-eye"></div></div>
+      <div class="royale-skins" id="royaleSkins"></div>
+      <button type="button" class="primary-btn" id="royaleStartBtn">Start 1v1 vs Bot</button>
+    </div>
+  </div>
+
+  <div class="royale-race-banner" id="royaleRace" hidden>
+    <div class="royale-race-word">Spell: <span id="royaleTargetWord">&mdash;</span></div>
+    <div class="royale-race-tracks">
+      <div class="royale-track">
+        <div class="royale-track-label">You</div>
+        <div class="royale-track-bar"><div class="royale-track-fill you" id="royaleYouFill"></div></div>
+      </div>
+      <div class="royale-track">
+        <div class="royale-track-label">Bot</div>
+        <div class="royale-track-bar"><div class="royale-track-fill bot" id="royaleBotFill"></div></div>
+      </div>
+    </div>
+    <p class="royale-race-result" id="royaleResult" hidden></p>
+    <div class="royale-race-actions">
+      <button type="button" class="text-btn" id="royaleForfeitBtn">Forfeit</button>
+      <button type="button" class="primary-btn" id="royaleRematchBtn" hidden>Race again</button>
+    </div>
+  </div>
 
   <div class="gaze-calib-overlay" id="gazeCalibOverlay" hidden>
     <div class="gaze-calib-setup" id="gazeCalibSetup">
@@ -1301,6 +1364,9 @@
     stopRealGazeTracking();
     stopDevGazeSim();
     if(el.gazeCalibOverlay) el.gazeCalibOverlay.hidden = true;
+    closeRoyaleRace();
+    closeRoyaleLobby();
+    updateRoyaleAccess();
     el.authGate.hidden = false;
     el.signInUsername.focus();
   }
@@ -1327,6 +1393,7 @@
     el.calibHint.hidden = hasCalibration();
     el.profileNameLabel.textContent = '👤 ' + username;
     setPartyMode(favorites.some(function(f){ return f.toUpperCase() === EASTER_EGG_PHRASE; }));
+    updateRoyaleAccess();
     hideAuthGate();
   }
 
@@ -1452,6 +1519,18 @@
     favoriteList: document.getElementById('favoriteList'),
     profileNameLabel: document.getElementById('profileNameLabel'),
     signOutBtn: document.getElementById('signOutBtn'),
+    royaleLobby: document.getElementById('royaleLobby'),
+    royaleLobbyClose: document.getElementById('royaleLobbyClose'),
+    royaleMascot: document.getElementById('royaleMascot'),
+    royaleSkins: document.getElementById('royaleSkins'),
+    royaleStartBtn: document.getElementById('royaleStartBtn'),
+    royaleRace: document.getElementById('royaleRace'),
+    royaleTargetWord: document.getElementById('royaleTargetWord'),
+    royaleYouFill: document.getElementById('royaleYouFill'),
+    royaleBotFill: document.getElementById('royaleBotFill'),
+    royaleResult: document.getElementById('royaleResult'),
+    royaleForfeitBtn: document.getElementById('royaleForfeitBtn'),
+    royaleRematchBtn: document.getElementById('royaleRematchBtn'),
     authGate: document.getElementById('authGate'),
     platformSignInBtn: document.getElementById('platformSignInBtn'),
     platformSignInNote: document.getElementById('platformSignInNote'),
@@ -1740,6 +1819,7 @@
     adaptiveAdjust();
     checkAutoSpacebar();
     renderStats();
+    updateRoyaleProgress();
   }
 
   /* ============================================================
@@ -2009,6 +2089,141 @@
   }
 
   /* ============================================================
+     1v1 Practice Arena - another hidden, undocumented easter egg,
+     same unlock pattern as the party mode above (a specific signed-in
+     username + favoriting a specific exact phrase), but built as an
+     actual practice tool rather than pure decoration: a bot "races"
+     you to spell a random word, and YOUR side of the race is typed
+     for real, through the exact same gaze/dwell/blink keyboard the
+     rest of the app uses - ghost text and suggestions included, so
+     faster prediction genuinely helps you win. No real matchmaking,
+     no networking, no actual game engine - the bot is just a timer
+     with a progress bar.
+     ============================================================ */
+  var ROYALE_USERNAME = 'battleroyale121';
+  var ROYALE_PHRASE = 'ROAYLE';
+  var ROYALE_SKINS = [
+    {name:'teal',color:'#256D82'},{name:'blue',color:'#2563EB'},{name:'purple',color:'#7C3AED'},
+    {name:'pink',color:'#DB2777'},{name:'orange',color:'#D97706'},{name:'green',color:'#16A34A'}
+  ];
+  var royaleSkinColor = ROYALE_SKINS[0].color;
+  var royaleRaceState = null;
+  function isRoyaleUnlocked(){
+    return !!currentProfile && currentProfile.toLowerCase() === ROYALE_USERNAME &&
+      favorites.some(function(f){ return f.toUpperCase() === ROYALE_PHRASE; });
+  }
+  // The entry button is created and inserted only at the moment it's
+  // actually unlocked (and removed the moment it isn't) rather than
+  // sitting in the page as a merely-hidden element - so there's
+  // nothing in the page's own HTML, for anyone poking at it before
+  // unlocking, to find or even suspect exists.
+  function updateRoyaleAccess(){
+    var unlocked = isRoyaleUnlocked();
+    if(unlocked && !el.royaleEntryBtn){
+      var btn = document.createElement('button');
+      btn.className = 'icon-btn';
+      btn.setAttribute('aria-label', '1v1 practice arena');
+      btn.innerHTML = '&#127918;';
+      btn.addEventListener('click', openRoyaleLobby);
+      if(el.signOutBtn && el.signOutBtn.parentNode) el.signOutBtn.parentNode.insertBefore(btn, el.signOutBtn);
+      el.royaleEntryBtn = btn;
+    }else if(!unlocked && el.royaleEntryBtn){
+      el.royaleEntryBtn.remove();
+      el.royaleEntryBtn = null;
+    }
+  }
+  function renderRoyaleSkins(){
+    if(!el.royaleSkins) return;
+    el.royaleSkins.innerHTML = '';
+    ROYALE_SKINS.forEach(function(skin){
+      var btn = document.createElement('button');
+      btn.className = 'swatch' + (skin.color === royaleSkinColor ? ' active' : '');
+      btn.style.setProperty('--sw', skin.color);
+      btn.title = skin.name;
+      btn.addEventListener('click', function(){
+        royaleSkinColor = skin.color;
+        if(el.royaleMascot) el.royaleMascot.style.setProperty('--royale-skin', royaleSkinColor);
+        renderRoyaleSkins();
+      });
+      el.royaleSkins.appendChild(btn);
+    });
+  }
+  function openRoyaleLobby(){
+    if(!isRoyaleUnlocked() || !el.royaleLobby) return;
+    if(el.royaleMascot) el.royaleMascot.style.setProperty('--royale-skin', royaleSkinColor);
+    renderRoyaleSkins();
+    el.royaleLobby.hidden = false;
+  }
+  function closeRoyaleLobby(){
+    if(el.royaleLobby) el.royaleLobby.hidden = true;
+  }
+  // Reuses the same real word list already loaded for prediction rather
+  // than a hardcoded list - skips the handful of very shortest/most
+  // common words (ranks 0-59, mostly 1-3 letter function words) and
+  // keeps to a 4-7 letter range so races are neither trivial nor a slog.
+  function pickRoyaleWord(){
+    var candidates = [];
+    for(var i=60; i<400 && candidates.length<40; i++){
+      var w = FULL_DICTIONARY[i];
+      if(w && w.length>=4 && w.length<=7) candidates.push(w);
+    }
+    if(!candidates.length) return FULL_DICTIONARY[100] || 'apple';
+    return candidates[Math.floor(Math.random()*candidates.length)];
+  }
+  function startRoyaleRace(){
+    if(!isRoyaleUnlocked()) return;
+    closeRoyaleLobby();
+    var target = pickRoyaleWord();
+    buffer = ''; // fresh start - the player spells the target word from scratch
+    renderOutput(); renderSuggestions(); applyPredictions(); updateStarButton();
+    var botWpm = 14 + Math.random()*8; // ~14-22 WPM - a fair, beatable pace
+    var botMs = Math.max(2500, (target.length/5) / botWpm * 60000);
+    royaleRaceState = { target: target, botStart: performance.now(), botDurationMs: botMs, finished: false, animId: null };
+    el.royaleTargetWord.textContent = target;
+    el.royaleYouFill.style.width = '0%';
+    el.royaleBotFill.style.width = '0%';
+    el.royaleResult.hidden = true;
+    el.royaleRematchBtn.hidden = true;
+    el.royaleForfeitBtn.hidden = false;
+    el.royaleRace.hidden = false;
+    royaleRaceState.animId = requestAnimationFrame(royaleBotFrame);
+  }
+  function royaleBotFrame(now){
+    if(!royaleRaceState || royaleRaceState.finished) return;
+    var frac = Math.min(1, (now-royaleRaceState.botStart)/royaleRaceState.botDurationMs);
+    el.royaleBotFill.style.width = (frac*100)+'%';
+    if(frac >= 1){ endRoyaleRace('bot'); return; }
+    royaleRaceState.animId = requestAnimationFrame(royaleBotFrame);
+  }
+  // Progress is the longest correct PREFIX of the target word, so a
+  // typo further in doesn't wipe out progress already made - it just
+  // stops climbing until backspaced and fixed, same forgiving spirit
+  // as the rest of the app's typing model.
+  function updateRoyaleProgress(){
+    if(!royaleRaceState || royaleRaceState.finished) return;
+    var typed = buffer.trim().toLowerCase();
+    var target = royaleRaceState.target.toLowerCase();
+    var correct = 0;
+    while(correct < typed.length && correct < target.length && typed[correct] === target[correct]) correct++;
+    el.royaleYouFill.style.width = Math.min(100, (correct/target.length)*100) + '%';
+    if(typed === target) endRoyaleRace('you');
+  }
+  function endRoyaleRace(winner){
+    if(!royaleRaceState || royaleRaceState.finished) return;
+    royaleRaceState.finished = true;
+    if(royaleRaceState.animId) cancelAnimationFrame(royaleRaceState.animId);
+    el.royaleResult.textContent = winner === 'you' ? 'You win!' : 'Bot wins — want a rematch?';
+    el.royaleResult.hidden = false;
+    el.royaleForfeitBtn.hidden = true;
+    el.royaleRematchBtn.hidden = false;
+  }
+  function closeRoyaleRace(){
+    if(royaleRaceState && royaleRaceState.animId) cancelAnimationFrame(royaleRaceState.animId);
+    royaleRaceState = null;
+    if(el.royaleRace) el.royaleRace.hidden = true;
+  }
+
+  /* ============================================================
      Favorites — star a whole typed phrase for one-click reuse later.
      The star is always blink-only, same reasoning as the suggestions
      sidebar: gaze rests on your own typed text constantly while
@@ -2026,6 +2241,7 @@
     renderFavorites();
     updateStarButton();
     if(phrase.toUpperCase() === EASTER_EGG_PHRASE) setPartyMode(favorites.indexOf(phrase) !== -1);
+    if(phrase.toUpperCase() === ROYALE_PHRASE) updateRoyaleAccess();
   }
   function selectFavorite(phrase){
     buffer = phrase + ' ';
@@ -3352,6 +3568,10 @@
     var chosen = document.querySelector('input[name="gazeCalibGrid"]:checked');
     startGazeCalibration(chosen ? Number(chosen.value) : 5);
   });
+  el.royaleLobbyClose.addEventListener('click', closeRoyaleLobby);
+  el.royaleStartBtn.addEventListener('click', startRoyaleRace);
+  el.royaleForfeitBtn.addEventListener('click', closeRoyaleRace);
+  el.royaleRematchBtn.addEventListener('click', startRoyaleRace);
   el.realRecalibrateBtn.addEventListener('click', showGazeCalibSetup);
 
   /* ============================================================
