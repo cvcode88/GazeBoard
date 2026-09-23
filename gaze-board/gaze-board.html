@@ -265,6 +265,16 @@
      WebGazer re-applies its own inline styles on some updates. */
   #webgazerVideoContainer{ position:fixed !important; top:auto !important; left:16px !important; right:auto !important; bottom:16px !important; width:170px !important; height:128px !important; border-radius:12px; overflow:hidden; z-index:15; box-shadow:0 6px 20px rgba(0,0,0,.35); }
   #webgazerVideoFeed, #webgazerFaceOverlay, #webgazerFaceFeedbackBox{ width:170px !important; height:128px !important; }
+  /* A fit-your-face-here guide drawn over WebGazer's own live preview -
+     a repeatable, ongoing visual check for good distance/centering/
+     eye-level, not just a one-time arm's-length gesture. A pseudo-
+     element renders on top of WebGazer's own injected video/canvas
+     children without needing to touch content it manages itself. */
+  #webgazerVideoContainer::after{
+    content:''; position:absolute; left:50%; top:48%; transform:translate(-50%,-50%);
+    width:60%; height:78%; border-radius:50%;
+    border:2px dashed rgba(var(--focus-rgb),0.8); pointer-events:none;
+  }
   .settings-close{ position:absolute; top:16px; right:16px; background:none; border:none; font-size:1.1rem; color:var(--muted); cursor:pointer; }
   .panel-btn{ position:relative; width:100%; padding:10px; border-radius:10px; border:1px solid var(--border); background:var(--panel-2); color:var(--text); font-size:0.85rem; cursor:pointer; margin-bottom:8px; }
   .panel-btn:hover{ border-color:var(--accent); }
@@ -652,7 +662,7 @@
           <label><input type="radio" name="gazeIndicator" value="simulate"> Simulated webcam</label>
           <label><input type="radio" name="gazeIndicator" value="real"> Real webcam (experimental)</label>
         </div>
-        <div class="setting-hint">Simulated webcam replaces the small dot with a fuzzy, wandering blob approximating what a plain camera (no IR illumination or corneal-reflection tracking) actually outputs, instead of the mouse's perfect coordinates - and it isn't just cosmetic: the blob's own jittered position, not the real cursor, is what the keyboard actually hit-tests for dwell selection, so a wrong guess here is a wrong letter there. Within the blob, color runs darkest and most solid at the center (the actual estimate) and fades toward its edge (the surrounding uncertainty) - like a real confidence heatmap. Its hue shifts blue as recent movement speed increases (lower confidence mid-saccade) and orange as the mouse settles into a steadier fixation. Shape isn't fixed either: it's a little taller than wide even at rest (video-based trackers measure vertical gaze less precisely than horizontal - smaller range of motion, harder to detect), and stretches further along whatever direction it's currently moving, more so the faster it moves (webcam frame rate and processing lag mean the reported position blurs and trails behind the real one during fast eye movement) - with a softly morphing outline so it reads as a blob settling rather than a shape shaking in place. Real webcam replaces all of that with an actual eye tracker: <a href="https://webgazer.cs.brown.edu/" target="_blank" rel="noopener">WebGazer.js</a> (Brown University, open source since 2016) reads your real webcam through your browser and predicts where you're looking, using the exact same blob and key-selection pipeline described above - it's genuinely driving the keyboard, not a demo. Video never leaves this device; everything runs locally in your browser. It needs camera permission and a moment to load its face-tracking model, gets more accurate the more you use it, and its accuracy depends entirely on your real webcam, lighting and camera angle, not the slider below. For the best real-world accuracy: sit at a consistent, comfortable distance (roughly arm's length, ~50-60cm), get your face evenly lit from the front rather than backlit or lit from below, put the camera as close to eye level as you can, keep your head fairly still and move your eyes rather than your head, and recalibrate whenever your seating, lighting or distance changes. Even under ideal conditions, published webcam-only eye tracking tops out around 2-4&deg; of accuracy - noticeably looser than a real IR tracker - so some residual imprecision is the technology's real ceiling, not something calibration alone fixes. Vertical tracking in particular is well documented as less precise than horizontal for this kind of tracker (smaller eye range of motion, eyelid occlusion), which this build partially compensates for with a vertical gain correction.</div>
+        <div class="setting-hint">Simulated webcam replaces the small dot with a fuzzy, wandering blob approximating what a plain camera (no IR illumination or corneal-reflection tracking) actually outputs, instead of the mouse's perfect coordinates - and it isn't just cosmetic: the blob's own jittered position, not the real cursor, is what the keyboard actually hit-tests for dwell selection, so a wrong guess here is a wrong letter there. Within the blob, color runs darkest and most solid at the center (the actual estimate) and fades toward its edge (the surrounding uncertainty) - like a real confidence heatmap. Its hue shifts blue as recent movement speed increases (lower confidence mid-saccade) and orange as the mouse settles into a steadier fixation. Shape isn't fixed either: it's a little taller than wide even at rest (video-based trackers measure vertical gaze less precisely than horizontal - smaller range of motion, harder to detect), and stretches further along whatever direction it's currently moving, more so the faster it moves (webcam frame rate and processing lag mean the reported position blurs and trails behind the real one during fast eye movement) - with a softly morphing outline so it reads as a blob settling rather than a shape shaking in place. Real webcam replaces all of that with an actual eye tracker: <a href="https://webgazer.cs.brown.edu/" target="_blank" rel="noopener">WebGazer.js</a> (Brown University, open source since 2016) reads your real webcam through your browser and predicts where you're looking, using the exact same blob and key-selection pipeline described above - it's genuinely driving the keyboard, not a demo. Video never leaves this device; everything runs locally in your browser. It needs camera permission and a moment to load its face-tracking model, gets more accurate the more you use it, and its accuracy depends entirely on your real webcam, lighting and camera angle, not the slider below. For the best real-world accuracy: sit at a consistent, comfortable distance (roughly arm's length, ~50-60cm - a quick way to check without measuring anything: hold your arm straight out toward the screen, and if your fingertips just about reach it, you're in the right range), get your face evenly lit from the front rather than backlit or lit from below, put the camera as close to eye level as you can, keep your head fairly still and move your eyes rather than your head, and recalibrate whenever your seating, lighting or distance changes. The dashed oval on the camera preview in the corner is a fit-your-face-here guide - lining your face up inside it every time is a fast, repeatable way to get back to roughly the same distance and centering your calibration was actually trained on. Even under ideal conditions, published webcam-only eye tracking tops out around 2-4&deg; of accuracy - noticeably looser than a real IR tracker - so some residual imprecision is the technology's real ceiling, not something calibration alone fixes. Vertical tracking in particular is well documented as less precise than horizontal for this kind of tracker (smaller eye range of motion, eyelid occlusion), which this build partially compensates for with a vertical gain correction.</div>
       </div>
       <div class="setting-row" id="webcamQualityRow" hidden>
         <label>Webcam quality <span class="row-value" id="webcamQualityValue">Typical laptop webcam</span></label>
@@ -680,11 +690,11 @@
   <div class="gaze-calib-overlay" id="gazeCalibOverlay" hidden>
     <div class="gaze-calib-setup" id="gazeCalibSetup">
       <h2>Calibrate real eye tracking</h2>
-      <p>Look at a grid of dots, one at a time, and hold still on each - fully hands-free, no clicking. It sweeps the whole grid several times (more rounds, spread evenly, work better than fewer long stares - see the hint text in the Dev tab if you're curious why), then glides side to side and up and down into the corners a fixed grid never reaches, then spirals in from a big loop around the edges down to the center, and finishes by checking its own accuracy at a few key points and correcting any it's still getting wrong.</p>
+      <p>Look at a grid of dots, one at a time, and hold still on each - fully hands-free, no clicking. It sweeps the whole grid several times (more rounds, spread evenly, work better than fewer long stares - see the hint text in the Dev tab if you're curious why), then glides side to side and up and down into the corners a fixed grid never reaches (pausing briefly every time it jumps to a new row or column, so your eyes get a real moment to catch up before it resumes recording), and finishes by checking its own accuracy at a few key points and correcting any it's still getting wrong.</p>
       <div class="radio-group">
-        <label><input type="radio" name="gazeCalibGrid" value="3"> Quick — 3&times;3 grid (~4.5 min total)</label>
-        <label><input type="radio" name="gazeCalibGrid" value="5" checked> Standard — 5&times;5 grid (~5 min total)</label>
-        <label><input type="radio" name="gazeCalibGrid" value="7"> Thorough — 7&times;7 grid (~6 min total)</label>
+        <label><input type="radio" name="gazeCalibGrid" value="3"> Quick — 3&times;3 grid (~3 min total)</label>
+        <label><input type="radio" name="gazeCalibGrid" value="5" checked> Standard — 5&times;5 grid (~3.5 min total)</label>
+        <label><input type="radio" name="gazeCalibGrid" value="7"> Thorough — 7&times;7 grid (~4.5 min total)</label>
       </div>
       <div class="gaze-calib-setup-actions">
         <button type="button" class="primary-btn" id="gazeCalibStartBtn">Start calibration</button>
@@ -2754,6 +2764,35 @@
       return;
     }
     try{
+      // Two verified-safe accuracy improvements, both confirmed from
+      // WebGazer's actual source rather than guessed:
+      //
+      // First, clearData() wipes BOTH the in-memory training buffer and
+      //    the localStorage copy WebGazer keeps by default
+      //    (saveDataAcrossSessions is on out of the box). Without
+      //    this, starting a fresh "Real webcam" session could silently
+      //    mix in leftover training data from a past session - a
+      //    different day's lighting, a different seat, even a
+      //    different person - into the same 50-sample buffer this
+      //    session's calibration is about to fill. A clean slate every
+      //    time this starts can only help, never hurt.
+      if(window.webgazer.clearData) await window.webgazer.clearData();
+      // Second, the camera defaults to an "ideal" of 640x480 even though it
+      //    accepts up to 1920x1080 - a real face-tracking model reads
+      //    finer eye/pupil detail from a sharper image, so requesting
+      //    a higher ideal (matching common 720p) gives it more to
+      //    work with. min is left at the ORIGINAL default (640x480),
+      //    so this can't regress a webcam that can't do better - the
+      //    browser negotiates toward 1280x720 where the hardware
+      //    supports it and simply falls back toward the old baseline
+      //    everywhere else, never below it.
+      if(window.webgazer.setCameraConstraints){
+        await window.webgazer.setCameraConstraints({ video: {
+          width: { min: 640, ideal: 1280, max: 1920 },
+          height: { min: 480, ideal: 720, max: 1080 },
+          facingMode: 'user'
+        }});
+      }
       window.webgazer.setRegression('ridge');
       window.webgazer.setGazeListener(onRealGazeData);
       await window.webgazer.begin();
@@ -2823,7 +2862,14 @@
      whichever point happened to be visited last.
      ============================================================ */
   var GAZE_CALIB_ROUNDS = 4;
-  var GAZE_CALIB_SETTLE_MS = 600;   // time to let the eyes move to the new dot before recording anything
+  // Grounded in real saccade research, not padded: saccade LATENCY (time
+  // from a target appearing/moving to the eye beginning to move) is
+  // ~200ms typical for an unexpected/unpredictable target; the saccade
+  // itself then takes roughly 20-100ms depending on how far it has to
+  // travel (bigger jump = longer movement). ~300ms covers "latency +
+  // the movement" for a large, screen-spanning jump without adding
+  // slack beyond what the reaction itself actually needs.
+  var GAZE_CALIB_SETTLE_MS = 300;   // time to let the eyes move to the new dot before recording anything
   var GAZE_CALIB_SAMPLE_MS = 250;   // gap between samples once capturing
   var GAZE_CALIB_BUFFER_SIZE = 50;  // WebGazer's own fixed training-buffer size - never plan to exceed it per sweep
   var gazeCalibState = null, gazeCalibTimer = null, gazeCalibAnimId = null;
@@ -2916,10 +2962,20 @@
   var GAZE_CALIB_SNAKE_TOTAL_SWEEPS = GAZE_CALIB_SNAKE_SWEEPS_PER_ORIENTATION * 2;
   var GAZE_CALIB_SNAKE_SWEEP_MS = 24000;   // one full corner-to-corner sweep
   var GAZE_CALIB_SNAKE_SAMPLE_MS = 500;    // ~48 samples/sweep - under the 50-sample buffer
-  var GAZE_CALIB_SPIRAL_MS = 90000;      // 90s - most of the shrink happens toward the end, on purpose
-  var GAZE_CALIB_SPIRAL_TURNS = 9;
-  var GAZE_CALIB_SPIRAL_MAX_RADIUS = 0.68; // fraction-space - reaches near the true corners on the diagonals
-  var GAZE_CALIB_SPIRAL_SAMPLE_MS = 500;
+  // Within a lane the dot moves continuously and predictably - easy to
+  // track smoothly, no processing-delay concern. But at every lane
+  // boundary (end of a row, start of the next) ONE axis jumps
+  // instantly to a whole new position - exactly the kind of "target
+  // moved across the screen" case that needs a real settle pause:
+  // human saccade latency + landing/stabilizing on a new target is
+  // roughly 200-300ms, and sampling before that has passed would
+  // record eye features that don't actually match the assumed
+  // position yet, teaching the model something false. Sampling is
+  // suppressed for GAZE_CALIB_LANE_SETTLE_MS after every lane change,
+  // including the very first lane of a sweep and the jump between
+  // sweeps (e.g. horizontal ending one place, vertical starting fresh
+  // at a corner).
+  var GAZE_CALIB_LANE_SETTLE_MS = 300;
   // vertical=false: horizontal lanes (rows), sweeping left-right, stepping
   // down between rows - the original pattern. vertical=true: the exact
   // same lane logic with the two axes swapped - vertical lanes (columns),
@@ -2946,8 +3002,8 @@
     }
   }
   function startSnakePhase(){
-    setGazeCalibInstruction('Now follow the dot smoothly with just your eyes as it glides across the screen - including right into the corners, where it\'ll look half cut off on purpose. That\'s exactly the part a fixed grid of dots never reaches. It sweeps side to side first, then up and down.');
-    gazeCalibState = { phase:'snake', sweep:0, startedAt: performance.now(), lastSampleAt: 0 };
+    setGazeCalibInstruction('Now follow the dot smoothly with just your eyes as it glides across the screen - including right into the corners, where it\'ll look half cut off on purpose. That\'s exactly the part a fixed grid of dots never reaches. It sweeps side to side first, then up and down, pausing briefly every time it jumps to a new row or column so your eyes have a moment to catch up before it starts recording again.');
+    gazeCalibState = { phase:'snake', sweep:0, startedAt: performance.now(), lastSampleAt: 0, lastLane: -1, settleUntil: 0 };
     setGazeCalibSweepLabel();
     // Both continuous phases update left/top every animation frame -
     // the grid phase's CSS slide transition would smear/lag badly
@@ -2961,10 +3017,19 @@
   function snakePhaseFrame(now){
     if(!gazeCalibState || gazeCalibState.phase !== 'snake') return;
     var t = Math.min(1, (now-gazeCalibState.startedAt)/GAZE_CALIB_SNAKE_SWEEP_MS);
+    var lanes = GAZE_CALIB_SNAKE_LANES;
+    var lane = Math.floor(Math.min(lanes - 1e-6, t*lanes));
+    if(lane !== gazeCalibState.lastLane){
+      // The dot just jumped to a new row/column (or this is the very
+      // first lane of the sweep) - hold off recording anything until
+      // the eyes have had real time to land on it.
+      gazeCalibState.lastLane = lane;
+      gazeCalibState.settleUntil = now + GAZE_CALIB_LANE_SETTLE_MS;
+    }
     var pos = snakePathAt(t, gazeCalibSweepIsVertical(gazeCalibState.sweep));
     placeGazeCalibDotFrac(pos[0], pos[1]);
     el.gazeCalibDot.style.setProperty('--fill', t);
-    if(now - gazeCalibState.lastSampleAt >= GAZE_CALIB_SNAKE_SAMPLE_MS){
+    if(now >= gazeCalibState.settleUntil && now - gazeCalibState.lastSampleAt >= GAZE_CALIB_SNAKE_SAMPLE_MS){
       gazeCalibState.lastSampleAt = now;
       if(window.webgazer){
         window.webgazer.recordScreenPosition(Math.round(window.innerWidth*pos[0]), Math.round(window.innerHeight*pos[1]), 'click');
@@ -2972,50 +3037,19 @@
     }
     if(t >= 1){
       gazeCalibState.sweep++;
-      if(gazeCalibState.sweep >= GAZE_CALIB_SNAKE_TOTAL_SWEEPS){ startSpiralPhase(); return; }
+      if(gazeCalibState.sweep >= GAZE_CALIB_SNAKE_TOTAL_SWEEPS){ startRefinementPhase(); return; }
       gazeCalibState.startedAt = now;
+      // A new sweep can also change orientation (horizontal -> vertical)
+      // partway through, which is its own instant jump even though the
+      // lane counter resets to 0 either way - force a fresh settle
+      // window rather than relying on lane 0 !== lane 0 (which
+      // wouldn't detect a change here on its own).
+      gazeCalibState.lastLane = -1;
+      gazeCalibState.settleUntil = now + GAZE_CALIB_LANE_SETTLE_MS;
       setGazeCalibSweepLabel();
     }
     gazeCalibAnimId = requestAnimationFrame(snakePhaseFrame);
   }
-  // Constant angular velocity + shrinking radius means the motion is
-  // naturally fast/sweeping early (big circle, covering most of the
-  // screen every ~10s) and naturally calm/slow late (tiny circle,
-  // barely moving) without needing to hand-tune a separate speed curve -
-  // exactly "starts big and quick, ends slow at the center". Clamped
-  // to [-0.05, 1.05] so the very outermost loop can reach right to (and
-  // slightly past, half-clipped like the edge sweep's corners) the true
-  // screen edges without the dot ever going fully off-screen and
-  // invisible at the cardinal (up/down/left/right) points of the circle.
-  function spiralPathAt(t){
-    var angle = t * GAZE_CALIB_SPIRAL_TURNS * Math.PI * 2;
-    var radius = GAZE_CALIB_SPIRAL_MAX_RADIUS * Math.pow(1-t, 1.6);
-    var x = 0.5 + Math.cos(angle)*radius, y = 0.5 + Math.sin(angle)*radius;
-    return [Math.max(-0.05, Math.min(1.05, x)), Math.max(-0.05, Math.min(1.05, y))];
-  }
-  function startSpiralPhase(){
-    setGazeCalibInstruction('Almost done - follow the dot as it spirals in from a big loop around the edges down to the center. It moves fast at first and settles down as it shrinks.');
-    gazeCalibState = { phase:'spiral', startedAt: performance.now(), lastSampleAt: 0 };
-    if(el.gazeCalibProgress) el.gazeCalibProgress.textContent = 'Spiraling in…';
-    el.gazeCalibDot.style.setProperty('--fill', 0);
-    gazeCalibAnimId = requestAnimationFrame(spiralPhaseFrame);
-  }
-  function spiralPhaseFrame(now){
-    if(!gazeCalibState || gazeCalibState.phase !== 'spiral') return;
-    var t = Math.min(1, (now-gazeCalibState.startedAt)/GAZE_CALIB_SPIRAL_MS);
-    var pos = spiralPathAt(t);
-    placeGazeCalibDotFrac(pos[0], pos[1]);
-    el.gazeCalibDot.style.setProperty('--fill', t);
-    if(now - gazeCalibState.lastSampleAt >= GAZE_CALIB_SPIRAL_SAMPLE_MS){
-      gazeCalibState.lastSampleAt = now;
-      if(window.webgazer){
-        window.webgazer.recordScreenPosition(Math.round(window.innerWidth*pos[0]), Math.round(window.innerHeight*pos[1]), 'click');
-      }
-    }
-    if(t >= 1){ startRefinementPhase(); return; }
-    gazeCalibAnimId = requestAnimationFrame(spiralPhaseFrame);
-  }
-
   /* ---------- closed-loop accuracy refinement: the actual "compare
      its guess to reality and reduce error" pass. webgazer.getCurrentPrediction()
      (confirmed from source: an async read of the model's live guess
@@ -3025,9 +3059,9 @@
      gets MORE training samples and another check, up to a few
      attempts, before moving on. Points that are already accurate get
      checked once and skipped quickly. This is the genuine test-and-
-     correct loop the grid/sweep/spiral phases don't do on their own -
-     they only ever add training data, they never check whether it
-     actually worked. ---------- */
+     correct loop the grid/sweep phases don't do on their own - they
+     only ever add training data, they never check whether it actually
+     worked. ---------- */
   var GAZE_CALIB_REFINE_POINTS = [
     [0.5,0.5],
     [0.05,0.05],[0.95,0.05],[0.05,0.95],[0.95,0.95],
@@ -3035,7 +3069,7 @@
   ];
   var GAZE_CALIB_REFINE_GOOD_PX = 70;     // error at/under this counts as accurate enough to move on
   var GAZE_CALIB_REFINE_MAX_ATTEMPTS = 5; // cap so one stubborn point can't stall calibration forever
-  var GAZE_CALIB_REFINE_SETTLE_MS = 700;
+  var GAZE_CALIB_REFINE_SETTLE_MS = 300; // same research-grounded saccade-landing window as the other phases
   var GAZE_CALIB_REFINE_RETRY_MS = 450;
   var gazeCalibToken = 0; // bumped whenever calibration is stopped/skipped, so an in-flight async refinement loop can tell it's stale and quit instead of continuing into a torn-down state
   function gazeCalibWait(ms){
