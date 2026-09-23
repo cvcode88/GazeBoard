@@ -334,6 +334,7 @@
   .gaze-calib-info[hidden]{ display:none; }
   .gaze-calib-info h2{ font-size:1.1rem; margin-bottom:8px; }
   .gaze-calib-info p{ color:var(--muted); font-size:0.9rem; }
+  .gaze-calib-progress-line{ font-family:"JetBrains Mono",monospace; font-variant-numeric:tabular-nums; font-weight:600; color:var(--text) !important; margin-top:10px; }
   .gaze-calib-dot{
     position:fixed; width:46px; height:46px; border-radius:50%; padding:0; border:3px solid var(--focus);
     background:conic-gradient(var(--focus) calc(var(--fill,0)*360deg), transparent 0);
@@ -679,11 +680,11 @@
   <div class="gaze-calib-overlay" id="gazeCalibOverlay" hidden>
     <div class="gaze-calib-setup" id="gazeCalibSetup">
       <h2>Calibrate real eye tracking</h2>
-      <p>Look at a grid of dots, one at a time, and hold still on each - fully hands-free, no clicking. It sweeps the whole grid several times (more rounds, spread evenly, work better than fewer long stares - see the hint text in the Dev tab if you're curious why).</p>
+      <p>Look at a grid of dots, one at a time, and hold still on each - fully hands-free, no clicking. It sweeps the whole grid several times (more rounds, spread evenly, work better than fewer long stares - see the hint text in the Dev tab if you're curious why), then finishes with the dot smoothly gliding into the corners and wandering around, which a fixed grid never reaches on its own.</p>
       <div class="radio-group">
-        <label><input type="radio" name="gazeCalibGrid" value="3"> Quick — 3&times;3 grid (~1 min)</label>
-        <label><input type="radio" name="gazeCalibGrid" value="5" checked> Standard — 5&times;5 grid (~2 min)</label>
-        <label><input type="radio" name="gazeCalibGrid" value="7"> Thorough — 7&times;7 grid (~3 min)</label>
+        <label><input type="radio" name="gazeCalibGrid" value="3"> Quick — 3&times;3 grid (~2.5 min total)</label>
+        <label><input type="radio" name="gazeCalibGrid" value="5" checked> Standard — 5&times;5 grid (~3 min total)</label>
+        <label><input type="radio" name="gazeCalibGrid" value="7"> Thorough — 7&times;7 grid (~4 min total)</label>
       </div>
       <div class="gaze-calib-setup-actions">
         <button type="button" class="primary-btn" id="gazeCalibStartBtn">Start calibration</button>
@@ -692,7 +693,8 @@
     </div>
     <div class="gaze-calib-info" id="gazeCalibInfo" hidden>
       <h2>Calibrating real eye tracking</h2>
-      <p>Just look directly at the highlighted dot and hold still - it captures automatically and moves on by itself, no clicking needed. <span id="gazeCalibProgress">1 / 100</span></p>
+      <p id="gazeCalibInstruction">Just look directly at the highlighted dot and hold still - it captures automatically and moves on by itself, no clicking needed.</p>
+      <p class="gaze-calib-progress-line" id="gazeCalibProgress">1 / 100</p>
     </div>
     <div class="gaze-calib-dot" id="gazeCalibDot" aria-hidden="true" hidden></div>
     <button type="button" class="text-btn gaze-calib-skip" id="gazeCalibSkip" hidden>Skip calibration</button>
@@ -1497,6 +1499,7 @@
     gazeCalibStartBtn: document.getElementById('gazeCalibStartBtn'),
     gazeCalibSetupSkipBtn: document.getElementById('gazeCalibSetupSkipBtn'),
     gazeCalibInfo: document.getElementById('gazeCalibInfo'),
+    gazeCalibInstruction: document.getElementById('gazeCalibInstruction'),
     gazeCalibDot: document.getElementById('gazeCalibDot'),
     gazeCalibProgress: document.getElementById('gazeCalibProgress'),
     gazeCalibSkip: document.getElementById('gazeCalibSkip'),
@@ -2652,7 +2655,7 @@
   }
   function stopRealGazeTracking(){
     if(realNoDataTimer){ clearTimeout(realNoDataTimer); realNoDataTimer = null; }
-    if(gazeCalibTimer){ clearTimeout(gazeCalibTimer); gazeCalibTimer = null; }
+    stopGazeCalibTimers();
     gazeCalibState = null;
     if(el.gazeCalibOverlay) el.gazeCalibOverlay.hidden = true;
     if(el.realRecalibrateBtn) el.realRecalibrateBtn.hidden = true;
@@ -2702,7 +2705,18 @@
   var GAZE_CALIB_SETTLE_MS = 600;   // time to let the eyes move to the new dot before recording anything
   var GAZE_CALIB_SAMPLE_MS = 250;   // gap between samples once capturing
   var GAZE_CALIB_BUFFER_SIZE = 50;  // WebGazer's own fixed training-buffer size - never plan to exceed it per sweep
-  var gazeCalibState = null, gazeCalibTimer = null;
+  var gazeCalibState = null, gazeCalibTimer = null, gazeCalibAnimId = null;
+  function setGazeCalibInstruction(text){
+    if(el.gazeCalibInstruction) el.gazeCalibInstruction.textContent = text;
+  }
+  function stopGazeCalibTimers(){
+    if(gazeCalibTimer){ clearTimeout(gazeCalibTimer); gazeCalibTimer = null; }
+    if(gazeCalibAnimId){ cancelAnimationFrame(gazeCalibAnimId); gazeCalibAnimId = null; }
+  }
+  function placeGazeCalibDotFrac(fx, fy){
+    el.gazeCalibDot.style.left = Math.round(window.innerWidth*fx) + 'px';
+    el.gazeCalibDot.style.top = Math.round(window.innerHeight*fy) + 'px';
+  }
   function buildGazeCalibPoints(n){
     var fracs = [];
     for(var i=0; i<n; i++) fracs.push(n === 1 ? 0.5 : 0.08 + (0.92-0.08)*(i/(n-1)));
@@ -2752,35 +2766,139 @@
     if(gazeCalibState.index >= gazeCalibState.points.length){
       gazeCalibState.index = 0;
       gazeCalibState.round++;
-      if(gazeCalibState.round >= GAZE_CALIB_ROUNDS){ endGazeCalibration(true); return; }
+      if(gazeCalibState.round >= GAZE_CALIB_ROUNDS){ startSnakePhase(); return; }
     }
     renderGazeCalibPoint();
   }
+
+  /* ---------- smooth-pursuit phases: continuous motion into the true
+     screen edges/corners (fraction 0..1 exactly - not the grid's 0.08-
+     0.92 margin), which a fixed-point grid never visits and which is
+     exactly where ridge regression under-predicts most. The dot is
+     centered via CSS translate(-50%,-50%), so placing it at a literal
+     edge (0 or 1) makes the browser clip roughly half of it off the
+     viewport on its own - genuinely "half cut off", no extra styling
+     needed. "Smooth pursuit" is a real, named eye-tracking calibration
+     technique: the ground truth WebGazer needs is still just (a screen
+     position, paired with the eye reading at that instant) - a
+     continuously moving known position supplies that exactly as well
+     as a held-still point does, as long as the motion is slow enough
+     to actually track. Sampled on a fixed interval rather than at
+     each visit like the grid, but the same 50-sample buffer rule
+     still applies: each full sweep alone stays at or under ~50
+     samples, so one complete sweep's own samples span the WHOLE
+     screen evenly by the time it finishes - not just wherever it
+     happened to end. ---------- */
+  var GAZE_CALIB_SNAKE_ROWS = 6;
+  var GAZE_CALIB_SNAKE_SWEEPS = 2;
+  var GAZE_CALIB_SNAKE_SWEEP_MS = 24000;   // one full corner-to-corner sweep
+  var GAZE_CALIB_SNAKE_SAMPLE_MS = 500;    // ~48 samples/sweep - under the 50-sample buffer
+  var GAZE_CALIB_RANDOM_MS = 22000;
+  var GAZE_CALIB_RANDOM_SAMPLE_MS = 500;
+  var GAZE_CALIB_RANDOM_WAYPOINT_MS = 2200;
+  function snakePathAt(t){
+    var rows = GAZE_CALIB_SNAKE_ROWS;
+    var rowFloat = Math.min(rows - 1e-6, t*rows);
+    var row = Math.floor(rowFloat);
+    var withinRow = rowFloat - row;
+    var y = rows === 1 ? 0.5 : row/(rows-1);
+    var goingRight = (row % 2 === 0);
+    var x = goingRight ? withinRow : (1-withinRow);
+    return [x, y];
+  }
+  function startSnakePhase(){
+    setGazeCalibInstruction('Now follow the dot smoothly with just your eyes as it glides across the screen - including right into the corners, where it\'ll look half cut off on purpose. That\'s exactly the part a fixed grid of dots never reaches.');
+    gazeCalibState = { phase:'snake', sweep:0, startedAt: performance.now(), lastSampleAt: 0 };
+    if(el.gazeCalibProgress) el.gazeCalibProgress.textContent = 'Edge sweep 1 / ' + GAZE_CALIB_SNAKE_SWEEPS;
+    // Both continuous phases update left/top every animation frame -
+    // the grid phase's CSS slide transition would smear/lag badly
+    // here instead of tracking crisply, so it's switched off for the
+    // rest of calibration (restored in showGazeCalibSetup/startGazeCalibration
+    // for the next discrete-grid run).
+    el.gazeCalibDot.style.transition = 'none';
+    el.gazeCalibDot.style.setProperty('--fill', 0);
+    gazeCalibAnimId = requestAnimationFrame(snakePhaseFrame);
+  }
+  function snakePhaseFrame(now){
+    if(!gazeCalibState || gazeCalibState.phase !== 'snake') return;
+    var t = Math.min(1, (now-gazeCalibState.startedAt)/GAZE_CALIB_SNAKE_SWEEP_MS);
+    var pos = snakePathAt(t);
+    placeGazeCalibDotFrac(pos[0], pos[1]);
+    el.gazeCalibDot.style.setProperty('--fill', t);
+    if(now - gazeCalibState.lastSampleAt >= GAZE_CALIB_SNAKE_SAMPLE_MS){
+      gazeCalibState.lastSampleAt = now;
+      if(window.webgazer){
+        window.webgazer.recordScreenPosition(Math.round(window.innerWidth*pos[0]), Math.round(window.innerHeight*pos[1]), 'click');
+      }
+    }
+    if(t >= 1){
+      gazeCalibState.sweep++;
+      if(gazeCalibState.sweep >= GAZE_CALIB_SNAKE_SWEEPS){ startRandomPhase(); return; }
+      gazeCalibState.startedAt = now;
+      if(el.gazeCalibProgress) el.gazeCalibProgress.textContent = 'Edge sweep ' + (gazeCalibState.sweep+1) + ' / ' + GAZE_CALIB_SNAKE_SWEEPS;
+    }
+    gazeCalibAnimId = requestAnimationFrame(snakePhaseFrame);
+  }
+  function pickGazeCalibWaypoint(state, now){
+    state.from = state.to || snakePathAt(1);
+    state.to = [Math.random(), Math.random()];
+    state.waypointStart = now;
+  }
+  function startRandomPhase(){
+    setGazeCalibInstruction('Almost done - just keep following the dot as it wanders around on its own.');
+    gazeCalibState = { phase:'random', startedAt: performance.now(), lastSampleAt: 0, from:null, to:null, waypointStart:0 };
+    pickGazeCalibWaypoint(gazeCalibState, performance.now());
+    if(el.gazeCalibProgress) el.gazeCalibProgress.textContent = 'Free-roam calibration…';
+    gazeCalibAnimId = requestAnimationFrame(randomPhaseFrame);
+  }
+  function randomPhaseFrame(now){
+    if(!gazeCalibState || gazeCalibState.phase !== 'random') return;
+    var totalElapsed = now - gazeCalibState.startedAt;
+    if(totalElapsed >= GAZE_CALIB_RANDOM_MS){ endGazeCalibration(true); return; }
+    var wp = Math.min(1, (now-gazeCalibState.waypointStart)/GAZE_CALIB_RANDOM_WAYPOINT_MS);
+    var ease = wp < 0.5 ? 2*wp*wp : 1-Math.pow(-2*wp+2,2)/2; // ease-in-out, organic drifting rather than linear
+    var fx = gazeCalibState.from[0] + (gazeCalibState.to[0]-gazeCalibState.from[0])*ease;
+    var fy = gazeCalibState.from[1] + (gazeCalibState.to[1]-gazeCalibState.from[1])*ease;
+    placeGazeCalibDotFrac(fx, fy);
+    el.gazeCalibDot.style.setProperty('--fill', Math.min(1, totalElapsed/GAZE_CALIB_RANDOM_MS));
+    if(now - gazeCalibState.lastSampleAt >= GAZE_CALIB_RANDOM_SAMPLE_MS){
+      gazeCalibState.lastSampleAt = now;
+      if(window.webgazer){
+        window.webgazer.recordScreenPosition(Math.round(window.innerWidth*fx), Math.round(window.innerHeight*fy), 'click');
+      }
+    }
+    if(wp >= 1) pickGazeCalibWaypoint(gazeCalibState, now);
+    gazeCalibAnimId = requestAnimationFrame(randomPhaseFrame);
+  }
+
   function showGazeCalibSetup(){
     if(!el.gazeCalibOverlay) return;
-    if(gazeCalibTimer){ clearTimeout(gazeCalibTimer); gazeCalibTimer = null; }
+    stopGazeCalibTimers();
     gazeCalibState = null;
     el.gazeCalibOverlay.hidden = false;
     if(el.gazeCalibSetup) el.gazeCalibSetup.hidden = false;
     if(el.gazeCalibInfo) el.gazeCalibInfo.hidden = true;
     el.gazeCalibDot.hidden = true;
+    el.gazeCalibDot.style.transition = '';
     if(el.gazeCalibSkip) el.gazeCalibSkip.hidden = true;
   }
   function startGazeCalibration(gridSize){
     if(!el.gazeCalibOverlay) return;
-    if(gazeCalibTimer){ clearTimeout(gazeCalibTimer); gazeCalibTimer = null; }
+    stopGazeCalibTimers();
+    setGazeCalibInstruction('Just look directly at the highlighted dot and hold still - it captures automatically and moves on by itself, no clicking needed.');
     var points = buildGazeCalibPoints(gridSize || 5);
     var samplesPerVisit = Math.max(1, Math.floor(GAZE_CALIB_BUFFER_SIZE/points.length));
-    gazeCalibState = { points: points, samplesPerVisit: samplesPerVisit, round: 0, index: 0, samples: 0 };
+    gazeCalibState = { phase:'grid', points: points, samplesPerVisit: samplesPerVisit, round: 0, index: 0, samples: 0 };
     if(el.gazeCalibSetup) el.gazeCalibSetup.hidden = true;
     if(el.gazeCalibInfo) el.gazeCalibInfo.hidden = false;
     el.gazeCalibDot.hidden = false;
+    el.gazeCalibDot.style.transition = ''; // discrete jumps between grid points use the CSS slide transition
     if(el.gazeCalibSkip) el.gazeCalibSkip.hidden = false;
     el.gazeCalibOverlay.hidden = false;
     renderGazeCalibPoint();
   }
   function endGazeCalibration(completed){
-    if(gazeCalibTimer){ clearTimeout(gazeCalibTimer); gazeCalibTimer = null; }
+    stopGazeCalibTimers();
     gazeCalibState = null;
     if(el.gazeCalibOverlay) el.gazeCalibOverlay.hidden = true;
     setRealTrackerStatus('active', completed
