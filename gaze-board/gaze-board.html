@@ -680,11 +680,11 @@
   <div class="gaze-calib-overlay" id="gazeCalibOverlay" hidden>
     <div class="gaze-calib-setup" id="gazeCalibSetup">
       <h2>Calibrate real eye tracking</h2>
-      <p>Look at a grid of dots, one at a time, and hold still on each - fully hands-free, no clicking. It sweeps the whole grid several times (more rounds, spread evenly, work better than fewer long stares - see the hint text in the Dev tab if you're curious why), then finishes with the dot smoothly gliding side to side and then up and down into the corners - covering ground a fixed grid never reaches - and a longer free-roam stretch wandering the whole screen at varying speeds.</p>
+      <p>Look at a grid of dots, one at a time, and hold still on each - fully hands-free, no clicking. It sweeps the whole grid several times (more rounds, spread evenly, work better than fewer long stares - see the hint text in the Dev tab if you're curious why), then glides side to side and up and down into the corners a fixed grid never reaches, then spirals in from a big loop around the edges down to the center, and finishes by checking its own accuracy at a few key points and correcting any it's still getting wrong.</p>
       <div class="radio-group">
-        <label><input type="radio" name="gazeCalibGrid" value="3"> Quick — 3&times;3 grid (~3.5 min total)</label>
-        <label><input type="radio" name="gazeCalibGrid" value="5" checked> Standard — 5&times;5 grid (~4 min total)</label>
-        <label><input type="radio" name="gazeCalibGrid" value="7"> Thorough — 7&times;7 grid (~5 min total)</label>
+        <label><input type="radio" name="gazeCalibGrid" value="3"> Quick — 3&times;3 grid (~4.5 min total)</label>
+        <label><input type="radio" name="gazeCalibGrid" value="5" checked> Standard — 5&times;5 grid (~5 min total)</label>
+        <label><input type="radio" name="gazeCalibGrid" value="7"> Thorough — 7&times;7 grid (~6 min total)</label>
       </div>
       <div class="gaze-calib-setup-actions">
         <button type="button" class="primary-btn" id="gazeCalibStartBtn">Start calibration</button>
@@ -2407,14 +2407,23 @@
   // Real gaze predictions arrive noisy frame to frame even after
   // WebGazer's own internal smoothing - rendering/hit-testing the raw
   // value directly made the blob visibly dance around a key instead of
-  // settling on it. realSmoothX/Y chase the raw devMouseX/Y with an
-  // exponential moving average each animation frame instead of jumping
-  // straight to them - a standard low-pass filter for a noisy pointer.
-  // Lower REAL_GAZE_SMOOTHING = calmer but more sluggish to respond;
-  // higher = snappier but jumpier. null means "not started yet" so the
-  // very first real sample snaps to position instead of easing in from 0,0.
-  var REAL_GAZE_SMOOTHING = 0.10;
-  var realSmoothX = null, realSmoothY = null;
+  // settling on it. A FLAT low-pass filter can't fix this well on its
+  // own though: turn it up enough to be calm at rest and it also
+  // attenuates genuine fast eye movements, undershooting real corners/
+  // extremes instead of reaching them ("dulled down"). The fix is
+  // ADAPTIVE smoothing - the same core idea behind the well-known "One
+  // Euro Filter" used for exactly this class of noisy human-input
+  // signal: smooth HARD when the raw signal is barely moving (holding
+  // a fixed gaze - kill the jitter, stay resting still), smooth LIGHTLY
+  // when it's moving fast (an actual eye movement to a new target -
+  // catch up quickly, don't truncate the real distance travelled).
+  // realRawPrevX/Y track the last RAW (unsmoothed) sample specifically
+  // to measure that raw velocity - using the smoothed value's own
+  // velocity here would lag a frame behind and defeat the point.
+  var REAL_SMOOTH_MIN = 0.05;   // holding still: heavy smoothing, genuinely calm
+  var REAL_SMOOTH_MAX = 0.6;    // moving fast: light smoothing, reaches the real target
+  var REAL_SMOOTH_SPEED_REF = 55; // raw px/frame that counts as "fully moving" for the blend above
+  var realSmoothX = null, realSmoothY = null, realRawPrevX = null, realRawPrevY = null;
   document.addEventListener('mousemove', function(e){
     // Real tracking owns devMouseX/Y from the webcam gaze listener below -
     // the mouse must not fight it for control of the same two variables.
@@ -2554,19 +2563,25 @@
     el.gazeDot.hidden = true;
     el.gazeBlob.hidden = false;
     devPrevX = devMouseX; devPrevY = devMouseY; devConfidence = 1; devWobbleT = 0; devAngle = 0;
-    realSmoothX = null; realSmoothY = null; // don't carry a stale smoothed position in from a previous run
+    realSmoothX = null; realSmoothY = null; realRawPrevX = null; realRawPrevY = null; // don't carry a stale run's state into a fresh one
     (function frame(){
       var real = settings.gazeIndicator === 'real';
       var blobX, blobY, size, dx, dy, speed;
       if(real){
-        // Ease toward the latest raw prediction instead of snapping to
-        // it - this is what actually calms the jumpiness down; devMouseX/Y
-        // themselves stay the true raw values so realConfidenceTarget()
-        // still measures the RAW signal's real jitter, not an
-        // artificially smoothed one.
-        if(realSmoothX === null){ realSmoothX = devMouseX; realSmoothY = devMouseY; }
-        realSmoothX += (devMouseX-realSmoothX) * REAL_GAZE_SMOOTHING;
-        realSmoothY += (devMouseY-realSmoothY) * REAL_GAZE_SMOOTHING;
+        if(realSmoothX === null){
+          realSmoothX = devMouseX; realSmoothY = devMouseY;
+          realRawPrevX = devMouseX; realRawPrevY = devMouseY;
+        }
+        // Raw (unsmoothed) velocity since the last frame - this is what
+        // decides how much to trust the newest sample. Using the
+        // SMOOTHED value's own velocity here would lag a frame behind
+        // and undercut the whole point of measuring "is this a real
+        // movement or just jitter" before deciding how hard to smooth.
+        var rawStep = Math.hypot(devMouseX-realRawPrevX, devMouseY-realRawPrevY);
+        realRawPrevX = devMouseX; realRawPrevY = devMouseY;
+        var alpha = REAL_SMOOTH_MIN + (REAL_SMOOTH_MAX-REAL_SMOOTH_MIN) * Math.min(1, rawStep/REAL_SMOOTH_SPEED_REF);
+        realSmoothX += (devMouseX-realSmoothX) * alpha;
+        realSmoothY += (devMouseY-realSmoothY) * alpha;
         dx = realSmoothX-devPrevX; dy = realSmoothY-devPrevY;
         speed = Math.hypot(dx, dy);
         devPrevX = realSmoothX; devPrevY = realSmoothY;
@@ -2816,6 +2831,7 @@
     if(el.gazeCalibInstruction) el.gazeCalibInstruction.textContent = text;
   }
   function stopGazeCalibTimers(){
+    gazeCalibToken++; // invalidate any in-flight async refinement loop
     if(gazeCalibTimer){ clearTimeout(gazeCalibTimer); gazeCalibTimer = null; }
     if(gazeCalibAnimId){ cancelAnimationFrame(gazeCalibAnimId); gazeCalibAnimId = null; }
   }
@@ -2900,10 +2916,10 @@
   var GAZE_CALIB_SNAKE_TOTAL_SWEEPS = GAZE_CALIB_SNAKE_SWEEPS_PER_ORIENTATION * 2;
   var GAZE_CALIB_SNAKE_SWEEP_MS = 24000;   // one full corner-to-corner sweep
   var GAZE_CALIB_SNAKE_SAMPLE_MS = 500;    // ~48 samples/sweep - under the 50-sample buffer
-  var GAZE_CALIB_RANDOM_MS = 45000;         // 30s-1min free-roam, per request
-  var GAZE_CALIB_RANDOM_SAMPLE_MS = 500;
-  var GAZE_CALIB_RANDOM_WAYPOINT_MIN_MS = 700;   // fast dart between points...
-  var GAZE_CALIB_RANDOM_WAYPOINT_MAX_MS = 3400;  // ...to a slow, lingering drift - varies every waypoint
+  var GAZE_CALIB_SPIRAL_MS = 90000;      // 90s - most of the shrink happens toward the end, on purpose
+  var GAZE_CALIB_SPIRAL_TURNS = 9;
+  var GAZE_CALIB_SPIRAL_MAX_RADIUS = 0.68; // fraction-space - reaches near the true corners on the diagonals
+  var GAZE_CALIB_SPIRAL_SAMPLE_MS = 500;
   // vertical=false: horizontal lanes (rows), sweeping left-right, stepping
   // down between rows - the original pattern. vertical=true: the exact
   // same lane logic with the two axes swapped - vertical lanes (columns),
@@ -2956,46 +2972,105 @@
     }
     if(t >= 1){
       gazeCalibState.sweep++;
-      if(gazeCalibState.sweep >= GAZE_CALIB_SNAKE_TOTAL_SWEEPS){ startRandomPhase(); return; }
+      if(gazeCalibState.sweep >= GAZE_CALIB_SNAKE_TOTAL_SWEEPS){ startSpiralPhase(); return; }
       gazeCalibState.startedAt = now;
       setGazeCalibSweepLabel();
     }
     gazeCalibAnimId = requestAnimationFrame(snakePhaseFrame);
   }
-  function pickGazeCalibWaypoint(state, now){
-    state.from = state.to || snakePathAt(1, true);
-    state.to = [Math.random(), Math.random()];
-    state.waypointStart = now;
-    // A different duration every waypoint - sometimes a quick dart,
-    // sometimes a slow drift - so the dot moves "at different speeds",
-    // not one constant pace, across the whole free-roam phase.
-    state.waypointDuration = GAZE_CALIB_RANDOM_WAYPOINT_MIN_MS + Math.random()*(GAZE_CALIB_RANDOM_WAYPOINT_MAX_MS-GAZE_CALIB_RANDOM_WAYPOINT_MIN_MS);
+  // Constant angular velocity + shrinking radius means the motion is
+  // naturally fast/sweeping early (big circle, covering most of the
+  // screen every ~10s) and naturally calm/slow late (tiny circle,
+  // barely moving) without needing to hand-tune a separate speed curve -
+  // exactly "starts big and quick, ends slow at the center". Clamped
+  // to [-0.05, 1.05] so the very outermost loop can reach right to (and
+  // slightly past, half-clipped like the edge sweep's corners) the true
+  // screen edges without the dot ever going fully off-screen and
+  // invisible at the cardinal (up/down/left/right) points of the circle.
+  function spiralPathAt(t){
+    var angle = t * GAZE_CALIB_SPIRAL_TURNS * Math.PI * 2;
+    var radius = GAZE_CALIB_SPIRAL_MAX_RADIUS * Math.pow(1-t, 1.6);
+    var x = 0.5 + Math.cos(angle)*radius, y = 0.5 + Math.sin(angle)*radius;
+    return [Math.max(-0.05, Math.min(1.05, x)), Math.max(-0.05, Math.min(1.05, y))];
   }
-  function startRandomPhase(){
-    setGazeCalibInstruction('Almost done - just keep following the dot as it wanders around on its own, speeding up and slowing down.');
-    gazeCalibState = { phase:'random', startedAt: performance.now(), lastSampleAt: 0, from:null, to:null, waypointStart:0, waypointDuration:0 };
-    pickGazeCalibWaypoint(gazeCalibState, performance.now());
-    if(el.gazeCalibProgress) el.gazeCalibProgress.textContent = 'Free-roam calibration…';
-    gazeCalibAnimId = requestAnimationFrame(randomPhaseFrame);
+  function startSpiralPhase(){
+    setGazeCalibInstruction('Almost done - follow the dot as it spirals in from a big loop around the edges down to the center. It moves fast at first and settles down as it shrinks.');
+    gazeCalibState = { phase:'spiral', startedAt: performance.now(), lastSampleAt: 0 };
+    if(el.gazeCalibProgress) el.gazeCalibProgress.textContent = 'Spiraling in…';
+    el.gazeCalibDot.style.setProperty('--fill', 0);
+    gazeCalibAnimId = requestAnimationFrame(spiralPhaseFrame);
   }
-  function randomPhaseFrame(now){
-    if(!gazeCalibState || gazeCalibState.phase !== 'random') return;
-    var totalElapsed = now - gazeCalibState.startedAt;
-    if(totalElapsed >= GAZE_CALIB_RANDOM_MS){ endGazeCalibration(true); return; }
-    var wp = Math.min(1, (now-gazeCalibState.waypointStart)/gazeCalibState.waypointDuration);
-    var ease = wp < 0.5 ? 2*wp*wp : 1-Math.pow(-2*wp+2,2)/2; // ease-in-out, organic drifting rather than linear
-    var fx = gazeCalibState.from[0] + (gazeCalibState.to[0]-gazeCalibState.from[0])*ease;
-    var fy = gazeCalibState.from[1] + (gazeCalibState.to[1]-gazeCalibState.from[1])*ease;
-    placeGazeCalibDotFrac(fx, fy);
-    el.gazeCalibDot.style.setProperty('--fill', Math.min(1, totalElapsed/GAZE_CALIB_RANDOM_MS));
-    if(now - gazeCalibState.lastSampleAt >= GAZE_CALIB_RANDOM_SAMPLE_MS){
+  function spiralPhaseFrame(now){
+    if(!gazeCalibState || gazeCalibState.phase !== 'spiral') return;
+    var t = Math.min(1, (now-gazeCalibState.startedAt)/GAZE_CALIB_SPIRAL_MS);
+    var pos = spiralPathAt(t);
+    placeGazeCalibDotFrac(pos[0], pos[1]);
+    el.gazeCalibDot.style.setProperty('--fill', t);
+    if(now - gazeCalibState.lastSampleAt >= GAZE_CALIB_SPIRAL_SAMPLE_MS){
       gazeCalibState.lastSampleAt = now;
       if(window.webgazer){
-        window.webgazer.recordScreenPosition(Math.round(window.innerWidth*fx), Math.round(window.innerHeight*fy), 'click');
+        window.webgazer.recordScreenPosition(Math.round(window.innerWidth*pos[0]), Math.round(window.innerHeight*pos[1]), 'click');
       }
     }
-    if(wp >= 1) pickGazeCalibWaypoint(gazeCalibState, now);
-    gazeCalibAnimId = requestAnimationFrame(randomPhaseFrame);
+    if(t >= 1){ startRefinementPhase(); return; }
+    gazeCalibAnimId = requestAnimationFrame(spiralPhaseFrame);
+  }
+
+  /* ---------- closed-loop accuracy refinement: the actual "compare
+     its guess to reality and reduce error" pass. webgazer.getCurrentPrediction()
+     (confirmed from source: an async read of the model's live guess
+     from the CURRENT camera frame) is called while looking at a known
+     true point; the distance between that guess and the truth is a
+     real, measured error - not assumed - and a point that's still off
+     gets MORE training samples and another check, up to a few
+     attempts, before moving on. Points that are already accurate get
+     checked once and skipped quickly. This is the genuine test-and-
+     correct loop the grid/sweep/spiral phases don't do on their own -
+     they only ever add training data, they never check whether it
+     actually worked. ---------- */
+  var GAZE_CALIB_REFINE_POINTS = [
+    [0.5,0.5],
+    [0.05,0.05],[0.95,0.05],[0.05,0.95],[0.95,0.95],
+    [0.5,0.08],[0.5,0.92],[0.08,0.5],[0.92,0.5]
+  ];
+  var GAZE_CALIB_REFINE_GOOD_PX = 70;     // error at/under this counts as accurate enough to move on
+  var GAZE_CALIB_REFINE_MAX_ATTEMPTS = 5; // cap so one stubborn point can't stall calibration forever
+  var GAZE_CALIB_REFINE_SETTLE_MS = 700;
+  var GAZE_CALIB_REFINE_RETRY_MS = 450;
+  var gazeCalibToken = 0; // bumped whenever calibration is stopped/skipped, so an in-flight async refinement loop can tell it's stale and quit instead of continuing into a torn-down state
+  function gazeCalibWait(ms){
+    return new Promise(function(resolve){ setTimeout(resolve, ms); });
+  }
+  function startRefinementPhase(){
+    setGazeCalibInstruction('Last step - checking its own guesses against reality at a few key points, and correcting whichever ones are still off. Keep looking at the dot.');
+    var token = ++gazeCalibToken;
+    gazeCalibState = { phase:'refine' };
+    el.gazeCalibDot.style.setProperty('--fill', 0);
+    runRefinementPoint(token, 0);
+  }
+  async function runRefinementPoint(token, index){
+    if(gazeCalibToken !== token || !gazeCalibState || gazeCalibState.phase !== 'refine') return;
+    if(index >= GAZE_CALIB_REFINE_POINTS.length){ endGazeCalibration(true); return; }
+    var p = GAZE_CALIB_REFINE_POINTS[index];
+    var px = Math.round(window.innerWidth*p[0]), py = Math.round(window.innerHeight*p[1]);
+    placeGazeCalibDotFrac(p[0], p[1]);
+    if(el.gazeCalibProgress) el.gazeCalibProgress.textContent = 'Checking accuracy: point ' + (index+1) + ' / ' + GAZE_CALIB_REFINE_POINTS.length;
+    await gazeCalibWait(GAZE_CALIB_REFINE_SETTLE_MS);
+    if(gazeCalibToken !== token) return;
+    for(var attempt=0; attempt<GAZE_CALIB_REFINE_MAX_ATTEMPTS; attempt++){
+      var errPx = null;
+      try{
+        var pred = window.webgazer ? await window.webgazer.getCurrentPrediction() : null;
+        if(pred) errPx = Math.hypot(pred.x-px, pred.y-py);
+      }catch(e){}
+      if(gazeCalibToken !== token) return;
+      el.gazeCalibDot.style.setProperty('--fill', errPx === null ? 0.5 : Math.max(0, 1-Math.min(1, errPx/300)));
+      if(errPx !== null && errPx <= GAZE_CALIB_REFINE_GOOD_PX) break; // already accurate here - move on
+      if(window.webgazer) window.webgazer.recordScreenPosition(px, py, 'click'); // reinforce this exact point and re-check
+      await gazeCalibWait(GAZE_CALIB_REFINE_RETRY_MS);
+      if(gazeCalibToken !== token) return;
+    }
+    runRefinementPoint(token, index+1);
   }
 
   function showGazeCalibSetup(){
